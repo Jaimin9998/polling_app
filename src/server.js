@@ -17,6 +17,7 @@ import {
   setSlide,
   setLocked,
   closeSession,
+  editSlide,
   publicSlide,
   isExpired,
 } from './session.js';
@@ -244,6 +245,14 @@ export function startServer({
         if (typeof msg.locked !== 'boolean') return send(ws, error('invalid'));
         setLocked(session, msg.locked, now);
         return notifyAll(room);
+      case 'editSlide': {
+        if (ws.role !== 'host') return send(ws, error('forbidden'));
+        // The editor names the slide it was opened on, so a slide change in between cannot make it rewrite another question.
+        if (msg.slideId !== session.slides[session.currentIndex].id) return send(ws, error('not_current'));
+        const edited = editSlide(session, msg, now);
+        if (!edited.ok) return send(ws, error(edited.reason));
+        return notifyAll(room);
+      }
       case 'closeEvent':
         // The presenter ends the event. The page only offers this on the last slide, but the server
         // does not insist: closing early is a legitimate emergency stop.

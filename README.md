@@ -69,6 +69,17 @@ Events saved on the server (see below) each have a permanent link, `/event/<id>`
 - The tie lives in memory like the poll itself: if the server restarts, start the event again and the same link works.
 - Only events in the server's `events/` folder have a permanent link. Drafts and files from your computer do not.
 
+## The presenter's results screen
+
+- **Live results:** bars (or the word cloud) animate as votes arrive: numbers count up, a running total sits above them, the leading option gets a glow and a **Leading** badge, and each new vote pops a small spark where it landed (limited to about four a second, so a big room stays pretty rather than chaotic).
+- **Winner reveal:** pressing **Lock voting** with votes in re-sorts the bars, crowns the winner (a tie crowns every tied option and says **Tie**), dims the rest and fires confetti in the logo's colours. For a word cloud the most frequent word is enlarged and glows. **Unlock voting** puts everything back. Opening the page while already locked shows the final styling without confetti.
+- **Reduced motion:** if the device asks for reduced motion, there is no confetti or movement; the results still switch to their final styling.
+- Confetti uses the small `canvas-confetti` library, copied into `public/vendor/` (ISC license, no network calls), so it works with no internet at the venue.
+
+## Editing a live question
+
+Press **Edit question** under the question on the presenter screen to fix its wording (and, for multiple choice, the option labels). **Save** applies it everywhere at once; Enter saves and Esc cancels. Votes are kept: the number of options cannot change, so each vote stays with the same option. Phones update live without losing a word someone is typing. You can only edit the slide on screen and not after the event is closed. Edits apply to the running poll only; they do not change an event file in `events/`.
+
 ## Closing the event
 
 On the last slide the presenter sees **Close event** (after a confirmation). Closing is final: voting and the presenter controls stop, the final results stay on the presenter screen, and every phone (including anyone who joins later, or opens the event link afterwards) shows the logo with "Thank you for joining!".

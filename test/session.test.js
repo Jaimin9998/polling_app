@@ -16,6 +16,7 @@ import {
   normalizeWord,
   normalizeCode,
   closeSession,
+  editSlide,
 } from '../src/session.js';
 
 const choice = { type: 'choice', prompt: 'Pick one', options: ['A', 'B', 'C'] };
@@ -487,4 +488,70 @@ test('closed beats locked as the reason a vote is refused', () => {
   setLocked(s, true);
   closeSession(s);
   assert.deepEqual(castVote(s, 'c1', 's0', 0), { ok: false, reason: 'closed' });
+});
+
+test('editSlide changes the wording of the current slide and keeps every vote', () => {
+  const s = make();
+  castVote(s, 'c1', 's0', 1);
+  castVote(s, 'c2', 's0', 0);
+  assert.deepEqual(editSlide(s, { prompt: '  Better question?  ', options: [' X ', 'Y', 'Z'] }, 777), { ok: true });
+  assert.equal(s.slides[0].prompt, 'Better question?');
+  assert.deepEqual(s.slides[0].options, ['X', 'Y', 'Z']);
+  assert.equal(s.slides[0].id, 's0');
+  assert.deepEqual(getResults(s), { type: 'choice', counts: [1, 1, 0], total: 2 });
+  assert.equal(getMyVote(s, 'c1'), 1);
+  assert.equal(s.lastActivity, 777);
+});
+
+test('editSlide only touches the current slide', () => {
+  const s = make();
+  setSlide(s, 1);
+  assert.deepEqual(editSlide(s, { prompt: 'New cloud question?' }), { ok: true });
+  assert.equal(s.slides[1].prompt, 'New cloud question?');
+  assert.equal(s.slides[0].prompt, 'Pick one');
+  assert.deepEqual(s.slides[0].options, ['A', 'B', 'C']);
+});
+
+test('editSlide on a word cloud changes only the question; options are ignored', () => {
+  const s = makeCloud();
+  castVote(s, 'c1', 's0', 'pizza');
+  assert.deepEqual(editSlide(s, { prompt: 'Another word?', options: ['ignored'] }), { ok: true });
+  assert.equal('options' in s.slides[0], false);
+  assert.deepEqual(getResults(s).words, [{ word: 'pizza', count: 1 }]);
+});
+
+test('editSlide refuses changes that would break the votes or the limits, and changes nothing', () => {
+  const s = make();
+  const before = JSON.stringify(s.slides);
+  const bad = [
+    {},
+    { prompt: '', options: ['A', 'B', 'C'] },
+    { prompt: '   ', options: ['A', 'B', 'C'] },
+    { prompt: 5, options: ['A', 'B', 'C'] },
+    { prompt: 'x'.repeat(141), options: ['A', 'B', 'C'] },
+    { prompt: 'q' },
+    { prompt: 'q', options: 'ABC' },
+    { prompt: 'q', options: ['A', 'B'] }, // fewer options would orphan votes
+    { prompt: 'q', options: ['A', 'B', 'C', 'D'] }, // more options is a bigger change than a wording fix
+    { prompt: 'q', options: ['A', '', 'C'] },
+    { prompt: 'q', options: ['A', 'B', 7] },
+    { prompt: 'q', options: ['A', 'B', 'x'.repeat(61)] },
+  ];
+  for (const patch of bad) {
+    assert.deepEqual(editSlide(s, patch), { ok: false, reason: 'invalid' }, JSON.stringify(patch));
+  }
+  assert.equal(editSlide(s, null).reason, 'invalid');
+  assert.equal(JSON.stringify(s.slides), before);
+});
+
+test('editSlide copies what it is given and is refused once the event is closed', () => {
+  const s = make();
+  const options = ['X', 'Y', 'Z'];
+  editSlide(s, { prompt: 'q', options });
+  options[0] = 'tampered';
+  assert.deepEqual(s.slides[0].options, ['X', 'Y', 'Z']);
+
+  closeSession(s);
+  assert.deepEqual(editSlide(s, { prompt: 'late', options: ['1', '2', '3'] }), { ok: false, reason: 'closed' });
+  assert.equal(s.slides[0].prompt, 'q');
 });

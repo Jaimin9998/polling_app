@@ -34,6 +34,18 @@
       </header>
       <p id="progress" class="label"></p>
       <h1 id="prompt"></h1>
+      <p class="edit-link"><button id="edit-question" type="button" class="link">Edit question</button></p>
+      <form id="edit-form" class="edit-form" hidden>
+        <label class="field-label" for="edit-prompt">Question</label>
+        <input id="edit-prompt" maxlength="140" autocomplete="off" required>
+        <div id="edit-options"></div>
+        <div class="row">
+          <button id="edit-save" type="submit">Save</button>
+          <button id="edit-cancel" type="button" class="secondary">Cancel</button>
+        </div>
+        <p id="edit-error" class="error" role="alert" hidden></p>
+      </form>
+      <p id="total" class="total"></p>
       <div id="results" class="results" aria-live="polite"></div>
       <div class="controls">
         <button id="prev" type="button" class="secondary">← Previous</button>
@@ -61,6 +73,7 @@
     <p id="fatal-msg"></p>
     <a href="/">Back to home</a>
   </div>
+  <script src="/vendor/confetti.js"></script>
   <script type="module" src="/host.js"></script>
 </body>
 </html>

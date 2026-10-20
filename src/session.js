@@ -179,6 +179,28 @@ export function setLocked(session, locked, now = Date.now()) {
   session.lastActivity = now;
 }
 
+// Fixes the wording of the question on screen. Only text can change: a choice slide keeps exactly the
+// same number of options in the same order, so every vote already cast stays attached to the same option.
+export function editSlide(session, patch, now = Date.now()) {
+  if (session.closed) return { ok: false, reason: 'closed' };
+  const slide = session.slides[session.currentIndex];
+  const prompt = typeof patch?.prompt === 'string' ? patch.prompt.trim() : '';
+  if (!prompt || prompt.length > LIMITS.promptMax) return { ok: false, reason: 'invalid' };
+
+  let options;
+  if (slide.type === 'choice') {
+    const raw = patch.options;
+    if (!Array.isArray(raw) || raw.length !== slide.options.length) return { ok: false, reason: 'invalid' };
+    options = raw.map((o) => (typeof o === 'string' ? o.trim() : ''));
+    if (options.some((o) => !o || o.length > LIMITS.optionMax)) return { ok: false, reason: 'invalid' };
+  }
+
+  slide.prompt = prompt;
+  if (options) slide.options = options;
+  session.lastActivity = now;
+  return { ok: true };
+}
+
 // Ends the event for good. The results stay readable; everything else is frozen.
 export function closeSession(session, now = Date.now()) {
   session.closed = true;

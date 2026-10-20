@@ -16,6 +16,7 @@ const conn = connect({
     if (state.closed) return showThanks();
     $('#prompt').textContent = state.slide.prompt;
     if (builtFor !== state.slide.id) build(state.slide);
+    else refreshLabels(state.slide);
     update(state);
   },
   onFatal: () => showFatal('This poll has ended or the code is wrong.'),
@@ -37,6 +38,14 @@ function showThanks() {
   $('#live-ui').hidden = true;
   $('#thanks').hidden = false;
   document.title = 'Thank you · Live Polls';
+}
+
+// The presenter may reword the question or its options; update the text in place so a word being typed survives.
+function refreshLabels(slide) {
+  if (slide.type !== 'choice' || !refs.buttons) return;
+  slide.options.forEach((label, i) => {
+    if (refs.buttons[i] && refs.buttons[i].textContent !== label) refs.buttons[i].textContent = label;
+  });
 }
 
 // The answer area is rebuilt only when the slide changes, so a word being typed
