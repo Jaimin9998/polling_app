@@ -2,16 +2,41 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import QRCode from 'qrcode';
+import { WebSocketServer } from 'ws';
 import {
   createSession,
   generateCode,
   normalizeCode,
   ValidationError,
+  castVote,
+  getResults,
+  getMyVote,
+  setSlide,
+  setLocked,
+  publicSlide,
+  isExpired,
 } from './session.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
+
+const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+const CLIENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
+function tokensMatch(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
+
+const error = (reason) => ({ type: 'error', reason });
+
+function send(ws, msg) {
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
 
 export function startServer({ port = 3000, host = '0.0.0.0' } = {}) {
   const sessions = new Map(); // code -> { session, sockets: Set<WebSocket> }
@@ -55,6 +80,122 @@ export function startServer({ port = 3000, host = '0.0.0.0' } = {}) {
   });
 
   const server = http.createServer(app);
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
+
+  function stateFor(room, ws) {
+    const { session } = room;
+    const base = {
+      type: 'state',
+      role: ws.role,
+      slide: publicSlide(session.slides[session.currentIndex]),
+      index: session.currentIndex,
+      total: session.slides.length,
+      locked: session.locked,
+    };
+    if (ws.role === 'host') {
+      let audienceCount = 0;
+      for (const s of room.sockets) if (s.role === 'audience') audienceCount += 1;
+      return { ...base, results: getResults(session), audienceCount };
+    }
+    return { ...base, myVote: getMyVote(session, ws.clientId) };
+  }
+
+  // Votes only need to reach hosts (live results) and the voter (their own
+  // confirmation), so audience size does not multiply the traffic per vote.
+  function notifyHosts(room) {
+    for (const s of room.sockets) if (s.role === 'host') send(s, stateFor(room, s));
+  }
+
+  function notifyAll(room) {
+    for (const s of room.sockets) send(s, stateFor(room, s));
+  }
+
+  function handleJoin(ws, msg) {
+    if (ws.room) return send(ws, error('already_joined'));
+    const room = sessions.get(normalizeCode(msg.code));
+    if (!room) return send(ws, error('not_found'));
+
+    if (msg.hostToken !== undefined) {
+      if (!tokensMatch(msg.hostToken, room.session.hostToken)) return send(ws, error('bad_token'));
+      ws.role = 'host';
+    } else {
+      if (typeof msg.clientId !== 'string' || !CLIENT_ID_RE.test(msg.clientId)) {
+        return send(ws, error('invalid'));
+      }
+      ws.role = 'audience';
+      ws.clientId = msg.clientId;
+    }
+    ws.room = room;
+    room.sockets.add(ws);
+    send(ws, stateFor(room, ws));
+    notifyHosts(room); // audience count changed
+  }
+
+  function handleMessage(ws, msg) {
+    if (!msg || typeof msg !== 'object') return send(ws, error('bad_message'));
+    if (msg.type === 'join') return handleJoin(ws, msg);
+
+    const room = ws.room;
+    if (!room) return send(ws, error('not_joined'));
+    const { session } = room;
+    const now = Date.now();
+
+    switch (msg.type) {
+      case 'vote': {
+        if (ws.role !== 'audience') return send(ws, error('forbidden'));
+        const result = castVote(session, ws.clientId, msg.slideId, msg.value, now);
+        if (!result.ok) return send(ws, error(result.reason));
+        send(ws, stateFor(room, ws));
+        return notifyHosts(room);
+      }
+      case 'setSlide':
+        if (ws.role !== 'host') return send(ws, error('forbidden'));
+        if (!setSlide(session, msg.index, now)) return send(ws, error('invalid'));
+        return notifyAll(room);
+      case 'lock':
+        if (ws.role !== 'host') return send(ws, error('forbidden'));
+        setLocked(session, msg.locked, now);
+        return notifyAll(room);
+      default:
+        return send(ws, error('bad_message'));
+    }
+  }
+
+  wss.on('connection', (ws) => {
+    ws.room = null;
+    ws.role = null;
+    ws.clientId = null;
+
+    ws.on('message', (raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return send(ws, error('bad_message'));
+      }
+      handleMessage(ws, msg);
+    });
+
+    ws.on('close', () => {
+      const room = ws.room;
+      if (!room) return;
+      room.sockets.delete(ws);
+      notifyHosts(room);
+    });
+  });
+
+  const sweeper = setInterval(() => {
+    const now = Date.now();
+    for (const [code, room] of sessions) {
+      if (!isExpired(room.session, now)) continue;
+      sessions.delete(code);
+      for (const ws of room.sockets) {
+        send(ws, error('not_found'));
+        ws.close();
+      }
+    }
+  }, SWEEP_INTERVAL_MS);
+  sweeper.unref();
 
   return new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -64,8 +205,10 @@ export function startServer({ port = 3000, host = '0.0.0.0' } = {}) {
         sessions,
         close: () =>
           new Promise((done) => {
+            clearInterval(sweeper);
+            for (const ws of wss.clients) ws.terminate();
             server.closeAllConnections();
-            server.close(() => done());
+            wss.close(() => server.close(() => done()));
           }),
       });
     });
