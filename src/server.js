@@ -25,6 +25,7 @@ const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const JOIN_TIMEOUT_MS = 10 * 1000;
+const MAX_SESSIONS = 200;
 const CLIENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 function tokensMatch(a, b) {
@@ -46,14 +47,22 @@ export function startServer({
   sweepIntervalMs = SWEEP_INTERVAL_MS,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
   joinTimeoutMs = JOIN_TIMEOUT_MS,
+  maxSessions = MAX_SESSIONS,
+  trustProxy = false, // number of reverse proxies in front of the app (e.g. 1 on Render)
 } = {}) {
   const sessions = new Map(); // code -> { session, sockets: Set<WebSocket> }
 
   const app = express();
   app.disable('x-powered-by');
+  // Behind a TLS-terminating proxy, req.protocol is only "https" if the proxy is trusted.
+  // Off by default so a directly exposed server cannot be talked into using a forged header.
+  if (trustProxy) app.set('trust proxy', trustProxy);
   app.use(express.json({ limit: '32kb' }));
 
   app.post('/api/sessions', (req, res) => {
+    if (sessions.size >= maxSessions) {
+      return res.status(503).json({ error: 'Too many active polls right now. Please try again later.' });
+    }
     try {
       const code = generateCode((c) => sessions.has(c));
       const session = createSession(req.body?.slides, { code });
@@ -262,7 +271,11 @@ export function startServer({
 // `npm start`: run directly and print every address a phone could use.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const wanted = Number(process.env.PORT) || 3000;
-  startServer({ port: wanted })
+  startServer({
+    port: wanted,
+    trustProxy: Number(process.env.TRUST_PROXY) || false,
+    maxSessions: Number(process.env.MAX_SESSIONS) || undefined,
+  })
     .then(({ port }) => {
       console.log('Live Polls is running');
       console.log(`  http://localhost:${port}`);

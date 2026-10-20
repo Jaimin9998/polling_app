@@ -1,0 +1,18 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+#
+# Live Polls keeps every poll in the server's memory, so it must run as exactly ONE
+# instance (never scale it out), and any restart ends all live polls.
+services:
+  - type: web
+    name: live-polls
+    runtime: node
+    plan: free # change to "starter" (and push) for a real event: free services sleep and may restart at any time
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY # Render terminates HTTPS in front of the app; needed so the QR code links use https
+        value: "1"

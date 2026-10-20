@@ -372,3 +372,56 @@ test('a second join on a joined socket is rejected; a host cannot vote', { timeo
   audience.ws.close();
   host.ws.close();
 });
+
+const postPoll = (localBase) =>
+  fetch(`${localBase}/api/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slides: [choiceSlide] }),
+  });
+
+test('maxSessions caps active polls with a 503, and expiry frees a slot', { timeout: 5000 }, async () => {
+  const local = await startServer({ port: 0, host: '127.0.0.1', maxSessions: 2, sweepIntervalMs: 20 });
+  try {
+    const localBase = `http://127.0.0.1:${local.port}`;
+    const first = await (await postPoll(localBase)).json();
+    assert.equal((await postPoll(localBase)).status, 201);
+
+    const refused = await postPoll(localBase);
+    assert.equal(refused.status, 503);
+    assert.match((await refused.json()).error, /too many/i);
+    assert.equal(local.sessions.size, 2, 'a refused request must not create a session');
+
+    local.sessions.get(first.code).session.lastActivity = 0; // expire one
+    while ((await fetch(`${localBase}/api/sessions/${first.code}`)).status !== 404) await sleep(10);
+    assert.equal((await postPoll(localBase)).status, 201, 'a freed slot can be used again');
+  } finally {
+    await local.close();
+  }
+});
+
+test('the default session cap does not get in the way of normal use', { timeout: 5000 }, async () => {
+  for (let i = 0; i < 5; i++) assert.equal((await postPoll(base)).status, 201);
+});
+
+async function qrWithAndWithoutProxyHeader(localBase) {
+  const { code } = await createPollOn(localBase);
+  const plain = await (await fetch(`${localBase}/api/qr/${code}`)).text();
+  const proxied = await (
+    await fetch(`${localBase}/api/qr/${code}`, { headers: { 'X-Forwarded-Proto': 'https' } })
+  ).text();
+  return { plain, proxied };
+}
+
+test('trustProxy makes the QR join URL follow X-Forwarded-Proto; off by default', { timeout: 5000 }, async () => {
+  const trusting = await startServer({ port: 0, host: '127.0.0.1', trustProxy: 1 });
+  try {
+    const { plain, proxied } = await qrWithAndWithoutProxyHeader(`http://127.0.0.1:${trusting.port}`);
+    assert.notEqual(proxied, plain, 'https join URL encodes differently from http');
+  } finally {
+    await trusting.close();
+  }
+
+  const { plain, proxied } = await qrWithAndWithoutProxyHeader(base);
+  assert.equal(proxied, plain, 'the header is ignored unless the proxy is trusted');
+});

@@ -24,7 +24,8 @@ Units:
 | `public/` | Three screens: home, presenter, audience. | the WebSocket protocol only |
 
 Server rules:
-- `startServer({ port, host, sweepIntervalMs, heartbeatIntervalMs, joinTimeoutMs })` starts the server and resolves once it is listening (it rejects if the port is taken). Defaults: port 3000, host `0.0.0.0`, sweep every 10 minutes, heartbeat every 30 s, join timeout 10 s.
+- `startServer({ port, host, sweepIntervalMs, heartbeatIntervalMs, joinTimeoutMs, maxSessions, trustProxy })` starts the server and resolves once it is listening (it rejects if the port is taken). Defaults: port 3000, host `0.0.0.0`, sweep every 10 minutes, heartbeat every 30 s, join timeout 10 s, `maxSessions` 200, `trustProxy` off.
+- `maxSessions` caps the polls alive at once: `POST /api/sessions` answers 503 with a readable error while the cap is reached, and expiry frees slots. `trustProxy` (number of reverse proxies in front of the app) makes `req.protocol` follow `X-Forwarded-Proto`, so the QR code's join link uses `https` behind Render, Railway or Fly; it is off by default so a directly exposed server ignores that header. Under `npm start` they are set with the `MAX_SESSIONS` and `TRUST_PROXY` environment variables.
 - A 30 s ping/pong heartbeat terminates sockets that stop answering (dead phones, sleeping laptops).
 - A socket that has not sent `join` within 10 s is closed.
 - WebSocket frames are limited to `maxPayload` 4096 bytes and the JSON request body to 32 kB. An oversize frame closes only that socket; the server keeps running.
