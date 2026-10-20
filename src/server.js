@@ -16,11 +16,12 @@ import {
   getMyVote,
   setSlide,
   setLocked,
+  closeSession,
   publicSlide,
   isExpired,
 } from './session.js';
 import { createOrganizerAuth } from './organizer.js';
-import { listEvents, readEventText } from './events.js';
+import { getEventInfo, listEvents, readEventText } from './events.js';
 
 const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
@@ -61,6 +62,7 @@ export function startServer({
   eventsDir = EVENTS_DIR,
 } = {}) {
   const sessions = new Map(); // code -> { session, sockets: Set<WebSocket> }
+  const liveByEvent = new Map(); // saved-event id -> join code of the poll started from it (in memory, like polls)
   const organizer = createOrganizerAuth({
     password: organizerPassword,
     creationLocked,
@@ -77,7 +79,7 @@ export function startServer({
   app.use(express.json({ limit: '32kb' }));
 
   // Organiser endpoints answer per person (and per token), so they must never be cached.
-  app.use(['/api/organizer', '/api/events'], (req, res, next) => {
+  app.use(['/api/organizer', '/api/events', '/api/live'], (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     next();
   });
@@ -90,7 +92,30 @@ export function startServer({
     res.type('application/json').send(text);
   });
 
-  app.post('/api/sessions', organizer.middleware, (req, res) => {
+  // Public: tells a phone on the permanent event link whether the event has started, and if so
+  // which poll to join. Only the event's name is revealed (never its questions).
+  app.get('/api/live/:id', async (req, res) => {
+    const info = await getEventInfo(eventsDir, req.params.id);
+    if (!info) return res.status(404).json({ error: 'not_found' });
+    let code = liveByEvent.get(info.id);
+    const room = code ? sessions.get(code) : undefined;
+    if (code && !room) {
+      liveByEvent.delete(info.id); // that poll has expired
+      code = undefined;
+    }
+    if (room?.session.closed) return res.json({ name: info.name, live: false, ended: true });
+    res.json(code ? { name: info.name, live: true, code } : { name: info.name, live: false });
+  });
+
+  // Public: the QR code for an event's permanent link, for printing or sharing in advance.
+  app.get('/api/event-qr/:id', async (req, res) => {
+    const info = await getEventInfo(eventsDir, req.params.id);
+    if (!info) return res.status(404).end();
+    const link = `${req.protocol}://${req.get('host')}/event/${info.id}`;
+    res.type('image/svg+xml').send(await QRCode.toString(link, { type: 'svg', margin: 1 }));
+  });
+
+  app.post('/api/sessions', organizer.middleware, async (req, res) => {
     if (sessions.size >= maxSessions) {
       return res.status(503).json({ error: 'Too many active polls right now. Please try again later.' });
     }
@@ -98,6 +123,10 @@ export function startServer({
       const code = generateCode((c) => sessions.has(c));
       const session = createSession(req.body?.slides, { code });
       sessions.set(code, { session, sockets: new Set() });
+      // Started from a saved event: its permanent link now leads into this poll. A missing,
+      // unknown or odd eventId is simply ignored; it must never stop a poll from starting.
+      const eventId = req.body?.eventId;
+      if (typeof eventId === 'string' && (await getEventInfo(eventsDir, eventId))) liveByEvent.set(eventId, code);
       res.status(201).json({ code, hostToken: session.hostToken });
     } catch (err) {
       if (!(err instanceof ValidationError)) throw err;
@@ -120,6 +149,7 @@ export function startServer({
   const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC_DIR, name));
   app.get('/host/:code', page('host.html'));
   app.get('/join/:code', page('join.html'));
+  app.get('/event/:id', page('event.html')); // the waiting page; /api/live/:id says whether the id is valid
   // The organiser page is public HTML (nothing secret in it); everything it does is behind the password.
   app.get(['/organise', '/organise/'], page('organise.html'));
   app.use(express.static(PUBLIC_DIR));
@@ -143,6 +173,7 @@ export function startServer({
       index: session.currentIndex,
       total: session.slides.length,
       locked: session.locked,
+      closed: session.closed,
     };
     if (ws.role === 'host') {
       const clients = new Set();
@@ -204,12 +235,20 @@ export function startServer({
       }
       case 'setSlide':
         if (ws.role !== 'host') return send(ws, error('forbidden'));
+        if (session.closed) return send(ws, error('closed'));
         if (!setSlide(session, msg.index, now)) return send(ws, error('invalid'));
         return notifyAll(room);
       case 'lock':
         if (ws.role !== 'host') return send(ws, error('forbidden'));
+        if (session.closed) return send(ws, error('closed'));
         if (typeof msg.locked !== 'boolean') return send(ws, error('invalid'));
         setLocked(session, msg.locked, now);
+        return notifyAll(room);
+      case 'closeEvent':
+        // The presenter ends the event. The page only offers this on the last slide, but the server
+        // does not insist: closing early is a legitimate emergency stop.
+        if (ws.role !== 'host') return send(ws, error('forbidden'));
+        closeSession(session, now);
         return notifyAll(room);
       default:
         return send(ws, error('bad_message'));
@@ -264,6 +303,7 @@ export function startServer({
         ws.close();
       }
     }
+    for (const [eventId, liveCode] of liveByEvent) if (!sessions.has(liveCode)) liveByEvent.delete(eventId);
   }, sweepIntervalMs);
   sweeper.unref();
 

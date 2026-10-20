@@ -15,6 +15,7 @@ import {
   isExpired,
   normalizeWord,
   normalizeCode,
+  closeSession,
 } from '../src/session.js';
 
 const choice = { type: 'choice', prompt: 'Pick one', options: ['A', 'B', 'C'] };
@@ -456,4 +457,34 @@ test('validation errors are named ValidationError', () => {
     () => createSession([], { code: 'ABCDE' }),
     (err) => err.name === 'ValidationError' && err instanceof ValidationError && err instanceof Error,
   );
+});
+
+test('a new session is open; closing it ends voting and navigation', () => {
+  const s = createSession([choice, cloud], { code: 'ABCDE', now: 0 });
+  assert.equal(s.closed, false);
+  assert.equal(closeSession(s, 900), true);
+  assert.equal(s.closed, true);
+  assert.equal(s.lastActivity, 900);
+  assert.deepEqual(castVote(s, 'c1', 's0', 0), { ok: false, reason: 'closed' });
+  assert.equal(setSlide(s, 1), false);
+  assert.equal(s.currentIndex, 0);
+  setLocked(s, true);
+  assert.equal(s.locked, false, 'nothing can change once the event is closed');
+});
+
+test('closing is idempotent and keeps the results that were collected', () => {
+  const s = make();
+  castVote(s, 'c1', 's0', 1);
+  closeSession(s);
+  closeSession(s);
+  assert.equal(s.closed, true);
+  assert.deepEqual(getResults(s), { type: 'choice', counts: [0, 1, 0], total: 1 });
+  assert.equal(getMyVote(s, 'c1'), 1);
+});
+
+test('closed beats locked as the reason a vote is refused', () => {
+  const s = make();
+  setLocked(s, true);
+  closeSession(s);
+  assert.deepEqual(castVote(s, 'c1', 's0', 0), { ok: false, reason: 'closed' });
 });

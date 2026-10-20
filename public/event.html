@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Polls</title>
+  <link rel="icon" type="image/png" href="/brand/favicon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main id="waiting" class="page waiting">
+    <img class="brand-logo" src="/brand/logo.png" width="1000" height="716" alt="Prasangam Vedic Events: Where Traditions Meet Elegance">
+    <h1 id="event-name" hidden></h1>
+    <p id="waiting-msg" class="waiting-msg" role="status">Checking the event…</p>
+    <p id="waiting-dots" class="waiting-dots" aria-hidden="true"><span></span><span></span><span></span></p>
+    <p class="hint"><a href="/">Have a join code? Enter it here</a></p>
+  </main>
+  <script type="module" src="/event.js"></script>
+</body>
+</html>

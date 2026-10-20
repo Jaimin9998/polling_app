@@ -117,7 +117,7 @@ $('#start').addEventListener('click', async () => {
     const res = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ slides: collectSlides() }),
+      body: JSON.stringify({ slides: collectSlides(), ...(linkedEvent ? { eventId: linkedEvent.id } : {}) }),
     });
     const body = await res.json();
     if (res.status === 401) {
@@ -172,7 +172,31 @@ function fail(err) {
 
 const builderHasText = () => collectSlides({ keepBlanks: true }).some((s) => s.prompt.trim() || s.options?.some((o) => o.trim()));
 
-function setBuilder({ name, slides }) {
+// A poll started from a saved event is tied to that event's permanent link (/event/<id>), so phones
+// that scanned the shared QR in advance are sent into it. The tie is shown, kept across reloads, and
+// can be removed.
+const LINK_KEY = 'live-polls:linked-event';
+let linkedEvent = null;
+try {
+  const saved = JSON.parse(localStorage.getItem(LINK_KEY) ?? 'null');
+  if (saved && typeof saved.id === 'string' && typeof saved.name === 'string') linkedEvent = { id: saved.id, name: saved.name };
+} catch {}
+
+function setLinked(event) {
+  linkedEvent = event;
+  try {
+    if (event) localStorage.setItem(LINK_KEY, JSON.stringify(event));
+    else localStorage.removeItem(LINK_KEY);
+  } catch {}
+  $('#linked-event').hidden = !event;
+  $('#linked-event-name').textContent = event?.name ?? '';
+}
+
+$('#unlink-event').addEventListener('click', () => setLinked(null));
+
+// Loading anything other than the linked event itself (a draft, a file, a blank poll) ends the tie.
+function setBuilder({ name, slides }, { keepLink = false } = {}) {
+  if (!keepLink) setLinked(null);
   slidesEl.replaceChildren();
   for (const slide of slides) addSlide(slide.type, { focus: false, slide });
   if (slides.length === 0) addSlide('choice', { focus: false });
@@ -296,11 +320,12 @@ $('#new-poll').addEventListener('click', () => {
 // Start: restore the last autosave if there is one, otherwise one blank multiple choice slide.
 const restored = store.loadAutosave();
 if (restored) {
-  setBuilder(restored);
+  setBuilder(restored, { keepLink: true });
   say('Restored your unsaved work from this browser.');
 } else {
   addSlide('choice', { focus: false });
 }
+setLinked(restored ? linkedEvent : null);
 renderDrafts();
 
 // Only start watching after the restore, so the restore cannot overwrite itself.
@@ -422,6 +447,16 @@ async function loadServerEvents() {
             },
             'Load',
           ),
+          el(
+            'button',
+            {
+              type: 'button',
+              className: 'secondary',
+              'aria-label': `Share QR code for ${ev.name}`,
+              onclick: () => openShare(ev),
+            },
+            'Share QR',
+          ),
         ),
       ),
     );
@@ -438,10 +473,109 @@ async function loadServerEvent(ev) {
     const event = parseEventFile(await res.text());
     if (!confirmReplace()) return;
     setBuilder(event);
+    setLinked({ id: ev.id, name: event.name });
     say(`Loaded "${event.name}" (${event.slides.length} ${event.slides.length === 1 ? 'slide' : 'slides'}).`);
   } catch (err) {
     fail(err);
   }
 }
+
+// ---- Share an event's permanent QR code and link ----
+// The QR points at /event/<id>, which waits until the event starts and then opens the poll,
+// so it can be sent out well before the day.
+
+const shareDialog = $('#share-dialog');
+let shareEvent = null;
+
+function shareSay(text) {
+  const node = $('#share-msg');
+  node.textContent = text;
+  node.hidden = !text;
+}
+
+function openShare(ev) {
+  shareEvent = ev;
+  $('#share-name').textContent = ev.name;
+  $('#share-qr').src = `/api/event-qr/${encodeURIComponent(ev.id)}`;
+  $('#share-link').value = `${location.origin}/event/${encodeURIComponent(ev.id)}`;
+  shareSay('');
+  shareDialog.hidden = false;
+  $('#share-copy').focus();
+}
+
+function closeShare() {
+  shareDialog.hidden = true;
+  shareEvent = null;
+}
+
+shareDialog.addEventListener('click', (event) => {
+  if (event.target === shareDialog) closeShare(); // a click on the dimmed backdrop, not on the card
+});
+$('#share-close').addEventListener('click', closeShare);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !shareDialog.hidden) closeShare();
+});
+
+$('#share-copy').addEventListener('click', async () => {
+  const input = $('#share-link');
+  try {
+    await navigator.clipboard.writeText(input.value);
+    shareSay('Link copied.');
+  } catch {
+    input.select();
+    shareSay(document.execCommand?.('copy') ? 'Link copied.' : 'Press Ctrl+C (Cmd+C on a Mac) to copy the selected link.');
+  }
+});
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = el('a', { href: url, download: filename });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const qrFileBase = () => `${fileNameFor(shareEvent?.name).replace(/\.json$/, '')}-qr`;
+
+async function fetchQrSvg() {
+  const res = await fetch(`/api/event-qr/${encodeURIComponent(shareEvent.id)}`);
+  if (!res.ok) throw new Error('qr');
+  return res.text();
+}
+
+$('#share-svg').addEventListener('click', async () => {
+  try {
+    saveBlob(new Blob([await fetchQrSvg()], { type: 'image/svg+xml' }), `${qrFileBase()}.svg`);
+    shareSay('Downloaded the SVG.');
+  } catch {
+    shareSay('Could not download the QR code.');
+  }
+});
+
+// PNG is what people paste into WhatsApp or print: draw the vector QR large, on white with a border.
+$('#share-png').addEventListener('click', async () => {
+  try {
+    const svg = (await fetchQrSvg()).replace('<svg ', '<svg width="1000" height="1000" ');
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    URL.revokeObjectURL(url);
+    const size = 1600;
+    const pad = 100;
+    const canvas = el('canvas', { width: size + pad * 2, height: size + pad * 2 });
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(image, pad, pad, size, size);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    saveBlob(blob, `${qrFileBase()}.png`);
+    shareSay('Downloaded the PNG.');
+  } catch {
+    shareSay('Could not download the QR code.');
+  }
+});
 
 checkOrganizer();

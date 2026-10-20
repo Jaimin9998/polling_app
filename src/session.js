@@ -74,6 +74,7 @@ export function createSession(slideInputs, { code, now = Date.now() }) {
     slides: buildSlides(slideInputs),
     currentIndex: 0,
     locked: false,
+    closed: false, // the presenter has ended the event: no more votes, no more changes
     lastActivity: now,
     votes: new Map(), // slideId -> Map(clientId -> number | string[])
   };
@@ -102,6 +103,7 @@ export function normalizeWord(value) {
 
 export function castVote(session, clientId, slideId, value, now = Date.now()) {
   if (typeof clientId !== 'string' || clientId === '') return { ok: false, reason: 'invalid' };
+  if (session.closed) return { ok: false, reason: 'closed' };
   if (session.locked) return { ok: false, reason: 'locked' };
   const slide = session.slides[session.currentIndex];
   if (slide.id !== slideId) return { ok: false, reason: 'not_current' };
@@ -163,6 +165,7 @@ export function getMyVote(session, clientId) {
 }
 
 export function setSlide(session, index, now = Date.now()) {
+  if (session.closed) return false;
   if (!Number.isInteger(index) || index < 0 || index >= session.slides.length) return false;
   session.currentIndex = index;
   session.locked = false; // a new slide always starts open
@@ -171,8 +174,16 @@ export function setSlide(session, index, now = Date.now()) {
 }
 
 export function setLocked(session, locked, now = Date.now()) {
+  if (session.closed) return;
   session.locked = locked === true;
   session.lastActivity = now;
+}
+
+// Ends the event for good. The results stay readable; everything else is frozen.
+export function closeSession(session, now = Date.now()) {
+  session.closed = true;
+  session.lastActivity = now;
+  return true;
 }
 
 export function publicSlide(slide) {

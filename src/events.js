@@ -26,6 +26,13 @@ async function readValid(dir, id) {
   }
 }
 
+// {id, name, slides} for one valid event, or null. Used by the public event link, which must
+// say only that the event exists and what it is called (never its questions).
+export async function getEventInfo(dir, id) {
+  const event = await readValid(dir, id);
+  return event ? { id, name: event.data.name, slides: event.data.slides.length } : null;
+}
+
 export async function listEvents(dir) {
   let files;
   try {

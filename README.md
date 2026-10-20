@@ -8,6 +8,7 @@ A small Mentimeter-style app. A presenter creates a poll (multiple choice and wo
 |---------|-----|------|
 | `/` | audience | Logo and a box to type the join code. Nothing about organising. |
 | `/join/CODE` | audience | Vote from a phone (the QR code points here). |
+| `/event/ID` | audience | The permanent link for a saved event. Before the event starts it shows a waiting page; the moment the organiser starts that event it opens the poll on its own. After the event is closed it says thank you. This is what the shareable QR code points to. |
 | `/organise` | organiser | Sign in with the organiser password, then build polls, save and load events, and start presenting. Not linked from the public page and marked `noindex`; bookmark it. |
 | `/host/CODE` | presenter | Live results and controls. Opened for you when you press **Start presenting**. Click the QR code for a big full-screen version (Esc or a click closes it). **Hide join panel** gives the results the whole screen and moves the logo to the top; **Show join panel** or **Full-screen QR** bring them back. The choice is remembered in that browser. |
 
@@ -58,6 +59,19 @@ Creating polls (and opening events saved on the server) needs a password; joinin
 ## Events saved on the server
 
 Files in `events/` (a `live-polls-event` JSON file, the same format as **Download event file**) appear on the organiser page under **Events saved on the server** after sign-in, with a **Load** button. They are part of the deploy, so they survive restarts. To add one, build it in the page, click **Download event file**, put the file in `events/` (lowercase letters, digits and hyphens in the file name), and push. `events/20-oct-2026-event.json` is the 20 Oct 2026 event.
+
+## Sharing the QR code in advance
+
+Events saved on the server (see below) each have a permanent link, `/event/<id>`, and a QR code for it. On the organiser page, press **Share QR** next to a saved event to see the QR, copy the link, or download the QR as a PNG (for WhatsApp or printing) or SVG. Send it out as early as you like: the link and QR never change, and survive restarts and redeploys.
+
+- People who scan it before the event see the logo, the event's name and "The event hasn't started yet", and are taken into the poll automatically when you start it.
+- To connect your poll to the link, **Load** the saved event on the organiser page and press **Start presenting**. A note above the builder says the poll is tied to the event link (**Unlink** removes the tie).
+- The tie lives in memory like the poll itself: if the server restarts, start the event again and the same link works.
+- Only events in the server's `events/` folder have a permanent link. Drafts and files from your computer do not.
+
+## Closing the event
+
+On the last slide the presenter sees **Close event** (after a confirmation). Closing is final: voting and the presenter controls stop, the final results stay on the presenter screen, and every phone (including anyone who joins later, or opens the event link afterwards) shows the logo with "Thank you for joining!".
 
 ## Saving polls ahead of time
 

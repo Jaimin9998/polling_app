@@ -91,6 +91,12 @@ function start() {
   $('#lock').addEventListener('click', () => {
     if (state) conn.send({ type: 'lock', locked: !state.locked });
   });
+  // Only offered on the last slide. Closing is final: voting stops and every phone shows a thank-you screen.
+  $('#close-event').addEventListener('click', () => {
+    if (!state || state.closed) return;
+    if (!window.confirm('Close the event for everyone? Voting will stop and every phone will show a thank-you screen. This cannot be undone.')) return;
+    conn.send({ type: 'closeEvent' });
+  });
   document.addEventListener('keydown', (event) => {
     if (event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (event.target.closest?.('input, textarea')) return;
@@ -106,7 +112,10 @@ function render(state) {
   $('#audience').textContent = `${state.audienceCount} joined`;
   $('#audience-top').textContent = `${state.audienceCount} joined`;
   $('#lock').textContent = state.locked ? 'Unlock voting' : 'Lock voting';
-  $('#prev').disabled = state.index === 0;
-  $('#next').disabled = state.index === state.total - 1;
+  $('#prev').disabled = state.closed || state.index === 0;
+  $('#next').disabled = state.closed || state.index === state.total - 1;
+  $('#lock').disabled = state.closed;
+  $('#close-event').hidden = state.closed || state.index !== state.total - 1;
+  $('#closed-note').hidden = !state.closed;
   renderResults($('#results'), state.slide, state.results);
 }

@@ -13,6 +13,7 @@ let refs = {};
 const conn = connect({
   join: { type: 'join', code, clientId },
   onState(state) {
+    if (state.closed) return showThanks();
     $('#prompt').textContent = state.slide.prompt;
     if (builtFor !== state.slide.id) build(state.slide);
     update(state);
@@ -22,6 +23,7 @@ const conn = connect({
   onError(reason) {
     const messages = {
       locked: 'Voting is locked',
+      closed: 'The event has ended',
       not_current: 'The presenter has moved on',
       duplicate: 'You already sent that word',
       limit: `You have used all ${WORDS_PER_CLIENT} words`,
@@ -29,6 +31,13 @@ const conn = connect({
     note.textContent = messages[reason] ?? 'Something went wrong, try again';
   },
 });
+
+// The presenter closed the event: replace the poll with a thank-you screen (also what latecomers see).
+function showThanks() {
+  $('#live-ui').hidden = true;
+  $('#thanks').hidden = false;
+  document.title = 'Thank you · Live Polls';
+}
 
 // The answer area is rebuilt only when the slide changes, so a word being typed
 // is not lost when the presenter locks voting or someone else joins.

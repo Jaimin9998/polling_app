@@ -30,6 +30,10 @@
       <h2 id="create-h">Create a poll</h2>
       <label class="field-label" for="event-name">Event name (used when saving)</label>
       <input id="event-name" placeholder="e.g. Diwali evening" maxlength="60" autocomplete="off">
+      <p id="linked-event" class="linked-event" hidden>
+        This poll will open from the shared link for <strong id="linked-event-name"></strong>.
+        <button type="button" id="unlink-event" class="link">Unlink</button>
+      </p>
       <div id="slides"></div>
       <div class="row">
         <button type="button" id="add-choice" class="secondary">+ Multiple choice</button>
@@ -59,6 +63,24 @@
       <button type="button" id="new-poll" class="link">Start a blank poll</button>
     </section>
   </main>
+  <div id="share-dialog" class="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
+      <h2 id="share-title">Share the event QR code</h2>
+      <p id="share-name" class="hint"></p>
+      <img id="share-qr" class="share-qr" alt="QR code for the event link" width="260" height="260">
+      <label class="field-label" for="share-link">Event link</label>
+      <input id="share-link" readonly>
+      <div class="row">
+        <button type="button" id="share-copy">Copy link</button>
+        <button type="button" id="share-png" class="secondary">Download QR (PNG)</button>
+        <button type="button" id="share-svg" class="secondary">Download QR (SVG)</button>
+      </div>
+      <p id="share-msg" class="ok" role="status" hidden></p>
+      <p class="hint">Anyone who scans this before the event sees a waiting page, which opens the poll by itself once you start this event. The link and QR never change. To connect your poll to it, load this event here, then press Start presenting.</p>
+      <button type="button" id="share-close" class="link">Close</button>
+    </div>
+  </div>
+
   <script type="module" src="/organise.js"></script>
 </body>
 </html>

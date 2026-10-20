@@ -176,3 +176,32 @@ a { color: var(--accent); font-weight: 600; }
   .qr-full .qr-full-logo { max-height: 22vh; max-width: min(300px, 30vw); }
   .qr-full .code { font-size: clamp(2.2rem, 10vh, 6rem); }
 }
+
+/* ---- Event waiting page (/event/<id>) ---- */
+.waiting { text-align: center; padding-top: 40px; }
+.waiting .brand-logo { width: min(440px, 92%); margin: 0 auto 16px; }
+.waiting h1 { margin: 8px 0 12px; font-size: clamp(1.5rem, 5vw, 2.2rem); }
+.waiting-msg { max-width: 30rem; margin: 0 auto 20px; color: var(--muted); font-size: 1.05rem; }
+.waiting-dots span { display: inline-block; width: 9px; height: 9px; margin: 0 4px; border-radius: 50%; background: var(--gold); animation: waiting-pulse 1.2s infinite ease-in-out; }
+.waiting-dots span:nth-child(2) { animation-delay: 0.2s; }
+.waiting-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes waiting-pulse { 0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .waiting-dots span { animation: none; opacity: 0.6; } }
+
+/* ---- Organiser: share dialog and linked-event note ---- */
+.linked-event { margin: 0 0 14px; padding: 8px 12px; font-size: 0.9rem; background: var(--accent-soft); border-radius: 10px; }
+.linked-event .link { padding: 0 0 0 6px; }
+.dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; overflow: auto; background: rgb(65 3 9 / 0.45); }
+.dialog { width: min(440px, 100%); max-height: 94vh; padding: 22px; overflow: auto; background: var(--card); border-radius: var(--radius); box-shadow: 0 8px 30px rgb(65 3 9 / 0.3); }
+.dialog h2 { margin: 0 0 4px; font-size: 1.15rem; }
+.share-qr { display: block; width: min(260px, 70vw); height: auto; margin: 12px auto; padding: 8px; background: #fff; border-radius: 12px; }
+#share-link { width: 100%; margin-bottom: 4px; }
+
+/* ---- Closing the event ---- */
+button.danger { color: var(--danger); background: transparent; border: 2px solid var(--danger); }
+button.danger:hover { color: #fff; background: var(--danger); }
+.closed-note { margin: 20px 0 0; padding: 10px 14px; background: var(--accent-soft); border-radius: 10px; }
+.thanks { padding: 32px 0; text-align: center; }
+.thanks .brand-logo { width: min(440px, 92%); margin: 0 auto 18px; }
+.thanks h1 { margin: 8px 0 10px; font-size: clamp(1.7rem, 7vw, 2.4rem); }
+.thanks p { margin: 0; color: var(--muted); font-size: 1.1rem; }
