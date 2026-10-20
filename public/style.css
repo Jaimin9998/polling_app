@@ -235,3 +235,10 @@ button.danger:hover { color: #fff; background: var(--danger); }
   .bar-row, .bar-fill, .cloud-word { transition: none; }
   .bar-row.pop .bar-fill, .cloud-word.pop-in { animation: none; }
 }
+
+/* <picture> is only a wrapper for the WebP/PNG choice; it must not affect layout */
+picture { display: contents; }
+
+/* The presenter's buttons wrap on narrow screens instead of overflowing */
+.controls { flex-wrap: wrap; }
+#download-msg { margin: 12px 0 0; }

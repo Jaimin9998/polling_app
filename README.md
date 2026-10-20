@@ -10,7 +10,7 @@ A small Mentimeter-style app. A presenter creates a poll (multiple choice and wo
 | `/join/CODE` | audience | Vote from a phone (the QR code points here). |
 | `/event/ID` | audience | The permanent link for a saved event. Before the event starts it shows a waiting page; the moment the organiser starts that event it opens the poll on its own. After the event is closed it says thank you. This is what the shareable QR code points to. |
 | `/organise` | organiser | Sign in with the organiser password, then build polls, save and load events, and start presenting. Not linked from the public page and marked `noindex`; bookmark it. |
-| `/host/CODE` | presenter | Live results and controls. Opened for you when you press **Start presenting**. Click the QR code for a big full-screen version (Esc or a click closes it). **Hide join panel** gives the results the whole screen and moves the logo to the top; **Show join panel** or **Full-screen QR** bring them back. The choice is remembered in that browser. |
+| `/host/CODE` | presenter | Live results and controls. Opened for you when you press **Start presenting**. Click the QR code for a big full-screen version (Esc or a click closes it). **Download results** saves every slide's results as a CSV. **Hide join panel** gives the results the whole screen and moves the logo to the top; **Show join panel** or **Full-screen QR** bring them back. The choice is remembered in that browser. |
 
 The organiser page itself is public HTML; everything it does is protected by the password on the server.
 
@@ -79,6 +79,17 @@ Events saved on the server (see below) each have a permanent link, `/event/<id>`
 ## Editing a live question
 
 Press **Edit question** under the question on the presenter screen to fix its wording (and, for multiple choice, the option labels). **Save** applies it everywhere at once; Enter saves and Esc cancels. Votes are kept: the number of options cannot change, so each vote stays with the same option. Phones update live without losing a word someone is typing. You can only edit the slide on screen and not after the event is closed. Edits apply to the running poll only; they do not change an event file in `events/`.
+
+## Downloading the results
+
+The presenter screen has a **Download results** button (it keeps working after the event is closed, until the poll expires). It saves `results-<CODE>.csv`, one row per answer for every slide (slide number, question, type, answer, votes, percent) plus a total row per slide. It opens in Excel or Google Sheets, Gujarati and other non-English text included. Words typed by the audience that start with `=`, `+`, `-` or `@` get a leading apostrophe so a spreadsheet cannot run them as formulas. Polls live only in memory, so download before the server restarts; only the poll's presenter can download.
+
+## Performance notes
+
+- **Page weight:** the logos are WebP (with a PNG fallback for old browsers) and the favicon is 64 px, so a phone opening the join page downloads about 40 KB instead of about 150 KB, and one opening the event link about 130 KB instead of about 420 KB.
+- **Caching:** images are cached for a day, the vendored confetti library for a week, scripts and styles for five minutes, and pages always revalidate so a deploy shows at once.
+- **Event link:** the server remembers each saved event's name for five seconds, so hundreds of waiting phones asking every few seconds do not each read a file.
+- **Free Render plan:** limited to 0.15 CPU and 512 MB, sleeps after 15 minutes without traffic (wiping any poll) and hides CPU and memory graphs. For a real audience use a paid plan.
 
 ## Closing the event
 

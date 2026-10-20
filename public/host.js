@@ -2,6 +2,7 @@ import { $, el, showFatal, showStatus } from './util.js';
 import { connect } from './ws-client.js';
 import { animateNumber, renderResults } from './results.js';
 import { shouldCelebrate } from './reveal.js';
+import { toCsv } from './results-csv.js';
 import { burst } from './celebrate.js';
 
 const code = location.pathname.split('/').filter(Boolean).pop().toUpperCase();
@@ -111,6 +112,36 @@ function start() {
     if (!window.confirm('Close the event for everyone? Voting will stop and every phone will show a thank-you screen. This cannot be undone.')) return;
     conn.send({ type: 'closeEvent' });
   });
+  // ---- Download the results of every slide as a CSV (opens in Excel or Google Sheets) ----
+  const downloadMsg = $('#download-msg');
+  function sayDownload(text, isError = false) {
+    downloadMsg.textContent = text;
+    downloadMsg.classList.toggle('error', isError);
+    downloadMsg.classList.toggle('ok', !isError);
+    downloadMsg.hidden = !text;
+  }
+  $('#download-results').addEventListener('click', async () => {
+    sayDownload('');
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(code)}/results`, {
+        headers: { Authorization: `Bearer ${hostToken}` },
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const csv = toCsv(await res.json());
+      // The byte-order mark makes Excel read Gujarati (and any other non-English text) correctly.
+      const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
+      const link = el('a', { href: url, download: `results-${code}.csv` });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      sayDownload(`Downloaded results-${code}.csv`);
+    } catch {
+      sayDownload('Could not download the results. Check your connection and try again.', true);
+    }
+  });
+
   // ---- Fix the wording of the question on screen (votes stay; phones update live) ----
   const form = $('#edit-form');
   let editingSlideId = null; // the slide the editor was opened on

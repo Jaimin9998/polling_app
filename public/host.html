@@ -10,7 +10,7 @@
 <body>
   <main id="layout" class="host-layout">
     <aside id="join-panel" class="join-panel">
-      <img class="brand-logo" src="/brand/logo-small.png" width="360" height="258" alt="Prasangam Vedic Events: Where Traditions Meet Elegance">
+      <picture><source srcset="/brand/logo-small.webp" type="image/webp"><img class="brand-logo" src="/brand/logo-small.png" width="360" height="258" alt="Prasangam Vedic Events: Where Traditions Meet Elegance"></picture>
       <p class="label">Join at</p>
       <p id="join-url" class="join-url"></p>
       <p class="label">with code</p>
@@ -25,7 +25,7 @@
 
     <section class="stage">
       <header id="topbar" class="host-topbar" hidden>
-        <img class="brand-logo" src="/brand/logo-small.png" width="360" height="258" alt="Prasangam Vedic Events: Where Traditions Meet Elegance">
+        <picture><source srcset="/brand/logo-small.webp" type="image/webp"><img class="brand-logo" src="/brand/logo-small.png" width="360" height="258" alt="Prasangam Vedic Events: Where Traditions Meet Elegance"></picture>
         <div class="topbar-side">
           <span id="audience-top" class="audience"></span>
           <button id="qr-open-top" type="button" class="secondary">Full-screen QR</button>
@@ -52,7 +52,9 @@
         <button id="lock" type="button" class="secondary">Lock voting</button>
         <button id="next" type="button">Next →</button>
         <button id="close-event" type="button" class="danger" hidden>Close event</button>
+        <button id="download-results" type="button" class="secondary">Download results</button>
       </div>
+      <p id="download-msg" class="ok" role="status" hidden></p>
       <p id="closed-note" class="closed-note" role="status" hidden>The event is closed. Every phone now shows the thank-you screen. <a href="/organise">Start another event</a></p>
     </section>
   </main>
@@ -60,7 +62,7 @@
   <div id="qr-full" class="qr-full" role="dialog" aria-modal="true" aria-label="Scan to join" hidden>
     <img id="qr-big" class="qr-big" alt="Large QR code to join the poll">
     <div class="qr-full-side">
-      <img class="brand-logo qr-full-logo" src="/brand/logo-small.png" width="360" height="258" alt="">
+      <picture><source srcset="/brand/logo-small.webp" type="image/webp"><img class="brand-logo qr-full-logo" src="/brand/logo-small.png" width="360" height="258" alt=""></picture>
       <p class="label">Scan to join</p>
       <p id="qr-full-code" class="code"></p>
       <p id="qr-full-url" class="join-url"></p>

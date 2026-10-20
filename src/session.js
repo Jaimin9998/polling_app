@@ -132,8 +132,7 @@ export function castVote(session, clientId, slideId, value, now = Date.now()) {
   return { ok: true };
 }
 
-export function getResults(session) {
-  const slide = session.slides[session.currentIndex];
+function resultsFor(session, slide) {
   const slideVotes = session.votes.get(slide.id) ?? new Map();
 
   if (slide.type === 'choice') {
@@ -154,6 +153,21 @@ export function getResults(session) {
     .map(([word, count]) => ({ word, count }))
     .sort((a, b) => b.count - a.count || (a.word < b.word ? -1 : a.word > b.word ? 1 : 0));
   return { type: 'wordcloud', words, total };
+}
+
+export function getResults(session) {
+  return resultsFor(session, session.slides[session.currentIndex]);
+}
+
+// Every slide with its question and results, for the presenter's download. No voter ids, no tokens.
+export function getAllResults(session) {
+  return session.slides.map((slide) => ({
+    id: slide.id,
+    type: slide.type,
+    prompt: slide.prompt,
+    ...(slide.options ? { options: [...slide.options] } : {}),
+    results: resultsFor(session, slide),
+  }));
 }
 
 // What this client has already submitted on the current slide.

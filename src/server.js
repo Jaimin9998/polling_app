@@ -18,6 +18,7 @@ import {
   setLocked,
   closeSession,
   editSlide,
+  getAllResults,
   publicSlide,
   isExpired,
 } from './session.js';
@@ -140,6 +141,18 @@ export function startServer({
     res.json({ ok: true });
   });
 
+  // The presenter's download: results for every slide. Only the poll's presenter token opens it, and it
+  // stays available after the event is closed (until the poll expires).
+  app.get('/api/sessions/:code/results', (req, res) => {
+    const room = sessions.get(normalizeCode(req.params.code));
+    if (!room) return res.status(404).json({ error: 'not_found' });
+    const header = req.get('authorization') ?? '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!tokensMatch(token, room.session.hostToken)) return res.status(401).json({ error: 'Presenter token required' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ code: room.session.code, closed: room.session.closed, slides: getAllResults(room.session) });
+  });
+
   app.get('/api/qr/:code', async (req, res) => {
     const code = normalizeCode(req.params.code);
     if (!sessions.has(code)) return res.status(404).end();
@@ -153,7 +166,19 @@ export function startServer({
   app.get('/event/:id', page('event.html')); // the waiting page; /api/live/:id says whether the id is valid
   // The organiser page is public HTML (nothing secret in it); everything it does is behind the password.
   app.get(['/organise', '/organise/'], page('organise.html'));
-  app.use(express.static(PUBLIC_DIR));
+  // Caching: images and the vendored library rarely change; scripts and styles only change with a deploy
+  // (five minutes is short enough to pick up a fix); pages always revalidate so a deploy shows at once.
+  app.use(
+    express.static(PUBLIC_DIR, {
+      setHeaders(res, filePath) {
+        const rel = path.relative(PUBLIC_DIR, filePath).split(path.sep).join('/');
+        if (rel.startsWith('vendor/')) res.setHeader('Cache-Control', 'public, max-age=604800');
+        else if (rel.startsWith('brand/')) res.setHeader('Cache-Control', 'public, max-age=86400');
+        else if (/\.(js|css)$/.test(rel)) res.setHeader('Cache-Control', 'public, max-age=300');
+        else res.setHeader('Cache-Control', 'no-cache');
+      },
+    }),
+  );
 
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);

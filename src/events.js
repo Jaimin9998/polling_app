@@ -28,9 +28,24 @@ async function readValid(dir, id) {
 
 // {id, name, slides} for one valid event, or null. Used by the public event link, which must
 // say only that the event exists and what it is called (never its questions).
-export async function getEventInfo(dir, id) {
+// Hundreds of phones waiting on the event link ask about the same event every few seconds, so each
+// answer (including "no such event") is remembered for a few seconds instead of re-reading the file.
+// Events only change with a deploy, so a short memory costs nothing. Keyed by folder and id.
+const infoCache = new Map(); // `${dir}\0${id}` -> { at, info }
+const INFO_TTL_MS = 5000;
+const INFO_CACHE_MAX = 500; // bad links must not grow this without bound
+
+export async function getEventInfo(dir, id, { now = Date.now, ttlMs = INFO_TTL_MS } = {}) {
+  const key = `${dir}\0${id}`;
+  const t = now();
+  const hit = infoCache.get(key);
+  if (hit && t - hit.at < ttlMs) return hit.info;
+
   const event = await readValid(dir, id);
-  return event ? { id, name: event.data.name, slides: event.data.slides.length } : null;
+  const info = event ? { id, name: event.data.name, slides: event.data.slides.length } : null;
+  if (infoCache.size >= INFO_CACHE_MAX) infoCache.clear();
+  infoCache.set(key, { at: t, info });
+  return info;
 }
 
 export async function listEvents(dir) {
