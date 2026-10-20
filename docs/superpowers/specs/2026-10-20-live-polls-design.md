@@ -43,8 +43,9 @@ Limits: at most 20 slides per session, 2–8 options per multiple choice slide, 
 ## Voting rules
 
 - Multiple choice: one vote per anonymous client ID (stored in the browser's localStorage). Voting again replaces the earlier vote.
-- Word cloud: up to 3 words per client ID. Words are trimmed and lowercased, capped at 25 characters, and counted case-insensitively. Empty words are ignored.
+- Word cloud: up to 3 words per client ID. Words are trimmed and lowercased, capped at 25 characters, and counted case-insensitively. Empty words are ignored, and a client cannot send the same word twice on a slide.
 - Votes on a locked session, or for a slide that isn't the current one, are ignored.
+- Changing slide unlocks voting, so a lock only applies to the slide it was set on.
 
 ## Protocol
 

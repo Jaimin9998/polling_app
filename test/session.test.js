@@ -5,9 +5,14 @@ import {
   generateCode,
   ValidationError,
   LIMITS,
+  IDLE_TIMEOUT_MS,
   castVote,
   getResults,
   getMyVote,
+  setSlide,
+  setLocked,
+  publicSlide,
+  isExpired,
 } from '../src/session.js';
 
 const choice = { type: 'choice', prompt: 'Pick one', options: ['A', 'B', 'C'] };
@@ -161,4 +166,55 @@ test('wordcloud: empty and non-string values are invalid', () => {
     assert.deepEqual(castVote(s, 'c1', 's0', v), { ok: false, reason: 'invalid' });
   }
   assert.equal(getResults(s).total, 0);
+});
+
+test('setSlide moves to a valid index, touches activity, and unlocks voting', () => {
+  const s = createSession([choice, cloud], { code: 'ABCDE', now: 0 });
+  s.locked = true;
+  assert.equal(setSlide(s, 1, 500), true);
+  assert.equal(s.currentIndex, 1);
+  assert.equal(s.locked, false);
+  assert.equal(s.lastActivity, 500);
+});
+
+test('setSlide rejects invalid indexes', () => {
+  const s = make();
+  for (const i of [-1, 2, 0.5, '1', null, undefined]) assert.equal(setSlide(s, i), false);
+  assert.equal(s.currentIndex, 0);
+});
+
+test('after setSlide, votes target the new current slide only', () => {
+  const s = make();
+  setSlide(s, 1);
+  assert.deepEqual(castVote(s, 'c1', 's0', 0), { ok: false, reason: 'not_current' });
+  assert.deepEqual(castVote(s, 'c1', 's1', 'pizza'), { ok: true });
+  assert.equal(getResults(s).total, 1);
+});
+
+test('setLocked sets and clears the lock', () => {
+  const s = createSession([choice], { code: 'ABCDE', now: 0 });
+  setLocked(s, true, 700);
+  assert.equal(s.locked, true);
+  assert.equal(s.lastActivity, 700);
+  setLocked(s, false);
+  assert.equal(s.locked, false);
+  setLocked(s, 'yes');
+  assert.equal(s.locked, false, 'only boolean true locks');
+});
+
+test('publicSlide omits options for word clouds', () => {
+  const s = make();
+  assert.deepEqual(publicSlide(s.slides[0]), {
+    id: 's0',
+    type: 'choice',
+    prompt: 'Pick one',
+    options: ['A', 'B', 'C'],
+  });
+  assert.deepEqual(publicSlide(s.slides[1]), { id: 's1', type: 'wordcloud', prompt: 'One word?' });
+});
+
+test('isExpired is true only after the idle timeout', () => {
+  const s = createSession([choice], { code: 'ABCDE', now: 0 });
+  assert.equal(isExpired(s, IDLE_TIMEOUT_MS), false);
+  assert.equal(isExpired(s, IDLE_TIMEOUT_MS + 1), true);
 });

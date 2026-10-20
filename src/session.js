@@ -139,3 +139,25 @@ export function getMyVote(session, clientId) {
   if (slide.type === 'choice') return mine ?? null;
   return mine ?? [];
 }
+
+export function setSlide(session, index, now = Date.now()) {
+  if (!Number.isInteger(index) || index < 0 || index >= session.slides.length) return false;
+  session.currentIndex = index;
+  session.locked = false; // a new slide always starts open
+  session.lastActivity = now;
+  return true;
+}
+
+export function setLocked(session, locked, now = Date.now()) {
+  session.locked = locked === true;
+  session.lastActivity = now;
+}
+
+export function publicSlide(slide) {
+  const { id, type, prompt, options } = slide;
+  return options ? { id, type, prompt, options } : { id, type, prompt };
+}
+
+export function isExpired(session, now = Date.now()) {
+  return now - session.lastActivity > IDLE_TIMEOUT_MS;
+}
