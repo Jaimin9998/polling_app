@@ -9,7 +9,7 @@ A small Mentimeter-style app. A presenter creates a poll (multiple choice and wo
 | `/` | audience | Logo and a box to type the join code. Nothing about organising. |
 | `/join/CODE` | audience | Vote from a phone (the QR code points here). |
 | `/organise` | organiser | Sign in with the organiser password, then build polls, save and load events, and start presenting. Not linked from the public page and marked `noindex`; bookmark it. |
-| `/host/CODE` | presenter | Live results and controls. Opened for you when you press **Start presenting**. |
+| `/host/CODE` | presenter | Live results and controls. Opened for you when you press **Start presenting**. Click the QR code for a big full-screen version (Esc or a click closes it). **Hide join panel** gives the results the whole screen and moves the logo to the top; **Show join panel** or **Full-screen QR** bring them back. The choice is remembered in that browser. |
 
 The organiser page itself is public HTML; everything it does is protected by the password on the server.
 

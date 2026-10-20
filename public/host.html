@@ -8,18 +8,30 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main class="host-layout">
-    <aside class="join-panel">
+  <main id="layout" class="host-layout">
+    <aside id="join-panel" class="join-panel">
       <img class="brand-logo" src="/brand/logo-small.png" width="360" height="258" alt="Prasangam Vedic Events: Where Traditions Meet Elegance">
       <p class="label">Join at</p>
       <p id="join-url" class="join-url"></p>
       <p class="label">with code</p>
       <p id="code" class="code"></p>
-      <img id="qr" alt="QR code to join the poll" width="180" height="180">
+      <button id="qr-open" type="button" class="qr-button" aria-label="Show the QR code full screen">
+        <img id="qr" alt="QR code to join the poll" width="180" height="180">
+      </button>
+      <p class="qr-hint">Click the QR code to enlarge it</p>
       <p id="audience" class="audience"></p>
+      <button id="panel-hide" type="button" class="link">Hide join panel</button>
     </aside>
 
     <section class="stage">
+      <header id="topbar" class="host-topbar" hidden>
+        <img class="brand-logo" src="/brand/logo-small.png" width="360" height="258" alt="Prasangam Vedic Events: Where Traditions Meet Elegance">
+        <div class="topbar-side">
+          <span id="audience-top" class="audience"></span>
+          <button id="qr-open-top" type="button" class="secondary">Full-screen QR</button>
+          <button id="panel-show" type="button" class="secondary">Show join panel</button>
+        </div>
+      </header>
       <p id="progress" class="label"></p>
       <h1 id="prompt"></h1>
       <div id="results" class="results" aria-live="polite"></div>
@@ -30,6 +42,17 @@
       </div>
     </section>
   </main>
+
+  <div id="qr-full" class="qr-full" role="dialog" aria-modal="true" aria-label="Scan to join" hidden>
+    <img id="qr-big" class="qr-big" alt="Large QR code to join the poll">
+    <div class="qr-full-side">
+      <img class="brand-logo qr-full-logo" src="/brand/logo-small.png" width="360" height="258" alt="">
+      <p class="label">Scan to join</p>
+      <p id="qr-full-code" class="code"></p>
+      <p id="qr-full-url" class="join-url"></p>
+      <button id="qr-close" type="button" class="secondary">Close (Esc)</button>
+    </div>
+  </div>
 
   <p id="status" class="status" role="status" hidden></p>
   <div id="fatal" class="fatal" role="alert" hidden>

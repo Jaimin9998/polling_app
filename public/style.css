@@ -145,3 +145,34 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--gold-light)
 .drafts button { padding: 8px 12px; }
 
 a { color: var(--accent); font-weight: 600; }
+
+/* ---- Presenter: enlarge the QR code, hide the join panel ---- */
+.host-layout.panel-hidden { grid-template-columns: 1fr; }
+.host-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.host-topbar .brand-logo { width: min(260px, 45%); margin: 0; }
+.topbar-side { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }
+.topbar-side .audience { margin: 0; }
+.qr-button { display: block; margin: 0 auto; padding: 0; background: none; border: 0; border-radius: 12px; cursor: zoom-in; }
+.qr-button:hover #qr { box-shadow: 0 0 0 3px var(--gold-light); }
+.qr-hint { margin: 6px 0 0; color: var(--muted); font-size: 0.8rem; }
+.join-panel .link { margin-top: 12px; }
+
+.qr-full {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: safe center; justify-content: safe center; gap: 14px;
+  padding: 16px; overflow: auto; text-align: center; background: var(--bg); cursor: zoom-out;
+}
+.qr-big { flex: none; width: min(54vh, 88vw); height: min(54vh, 88vw); padding: 12px; background: #fff; border-radius: 16px; box-shadow: 0 2px 14px rgb(65 3 9 / 0.18); }
+.qr-full-side { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.qr-full .qr-full-logo { width: auto; max-width: min(240px, 50vw); max-height: 13vh; margin: 0 auto 4px; object-fit: contain; }
+.qr-full .code { margin: 0; font-size: clamp(2rem, 7vh, 4.5rem); }
+.qr-full .join-url { margin: 0; }
+
+/* Wide screens (laptops, projectors): QR on the left as large as the height allows, details on the right. */
+@media (min-aspect-ratio: 4/3) {
+  .qr-full { flex-direction: row; gap: 5vw; }
+  .qr-big { width: min(86vh, 52vw); height: min(86vh, 52vw); }
+  .qr-full-side { max-width: 34vw; }
+  .qr-full .qr-full-logo { max-height: 22vh; max-width: min(300px, 30vw); }
+  .qr-full .code { font-size: clamp(2.2rem, 10vh, 6rem); }
+}
