@@ -2,7 +2,7 @@ import { $, el, getClientId, showFatal, showStatus } from './util.js';
 import { connect } from './ws-client.js';
 
 const WORDS_PER_CLIENT = 3;
-const code = location.pathname.split('/').pop().toUpperCase();
+const code = location.pathname.split('/').filter(Boolean).pop().toUpperCase();
 const clientId = getClientId();
 
 const answer = $('#answer');
@@ -43,7 +43,11 @@ function build(slide) {
         {
           type: 'button',
           className: 'choice',
-          onclick: () => conn.send({ type: 'vote', slideId: slide.id, value: i }),
+          onclick: () => {
+            if (!conn.send({ type: 'vote', slideId: slide.id, value: i })) {
+              note.textContent = 'Not connected, try again in a moment';
+            }
+          },
         },
         label,
       ),
@@ -69,8 +73,11 @@ function build(slide) {
         event.preventDefault();
         const value = refs.input.value;
         if (!value.trim()) return;
-        conn.send({ type: 'vote', slideId: slide.id, value });
-        refs.input.value = '';
+        if (conn.send({ type: 'vote', slideId: slide.id, value })) {
+          refs.input.value = '';
+        } else {
+          note.textContent = 'Not connected. Your word is kept, try again in a moment.';
+        }
       },
     },
     refs.input,

@@ -8,6 +8,14 @@ function showError(selector, message) {
   node.hidden = !message;
 }
 
+// Keep accessible names in step with each slide's and option's position.
+function relabel() {
+  [...slidesEl.children].forEach((card, i) => {
+    $('.remove', card).setAttribute('aria-label', `Remove slide ${i + 1}`);
+    card.querySelectorAll('.option').forEach((input, j) => input.setAttribute('aria-label', `Option ${j + 1}`));
+  });
+}
+
 function addSlide(type, { focus = true } = {}) {
   const card = el('div', { className: 'slide', 'data-type': type });
   const prompt = el('input', {
@@ -21,7 +29,18 @@ function addSlide(type, { focus = true } = {}) {
       'div',
       { className: 'slide-head' },
       el('strong', {}, type === 'choice' ? 'Multiple choice' : 'Word cloud'),
-      el('button', { type: 'button', className: 'link', onclick: () => card.remove() }, 'Remove'),
+      el(
+        'button',
+        {
+          type: 'button',
+          className: 'link remove',
+          onclick: () => {
+            card.remove();
+            relabel();
+          },
+        },
+        'Remove',
+      ),
     ),
     prompt,
   );
@@ -34,7 +53,7 @@ function addSlide(type, { focus = true } = {}) {
           className: 'option',
           placeholder: `Option ${list.children.length + 1}`,
           maxLength: 60,
-          'aria-label': 'Option',
+          'aria-label': `Option ${list.children.length + 1}`,
         }),
       );
     addOption();
@@ -47,7 +66,10 @@ function addSlide(type, { focus = true } = {}) {
           type: 'button',
           className: 'link',
           onclick: () => {
-            if (list.children.length < 8) addOption();
+            if (list.children.length < 8) {
+              addOption();
+              relabel();
+            }
           },
         },
         '+ Add option',
@@ -56,6 +78,7 @@ function addSlide(type, { focus = true } = {}) {
   }
 
   slidesEl.append(card);
+  relabel();
   if (focus) prompt.focus();
 }
 
@@ -74,7 +97,9 @@ $('#add-choice').addEventListener('click', () => addSlide('choice'));
 $('#add-cloud').addEventListener('click', () => addSlide('wordcloud'));
 
 $('#start').addEventListener('click', async () => {
+  const start = $('#start');
   showError('#create-error', '');
+  start.disabled = true; // a double-click must not create two sessions
   try {
     const res = await fetch('/api/sessions', {
       method: 'POST',
@@ -82,12 +107,20 @@ $('#start').addEventListener('click', async () => {
       body: JSON.stringify({ slides: collectSlides() }),
     });
     const body = await res.json();
-    if (!res.ok) return showError('#create-error', body.error ?? 'Could not create the poll');
+    if (!res.ok) {
+      start.disabled = false;
+      return showError('#create-error', body.error ?? 'Could not create the poll');
+    }
     try {
       localStorage.setItem(`host:${body.code}`, body.hostToken);
-    } catch {}
-    location.href = `/host/${body.code}`;
+    } catch {
+      try {
+        sessionStorage.setItem(`host:${body.code}`, body.hostToken);
+      } catch {}
+    }
+    location.href = `/host/${encodeURIComponent(body.code)}`;
   } catch {
+    start.disabled = false;
     showError('#create-error', 'Could not reach the server');
   }
 });
@@ -99,7 +132,7 @@ $('#join-form').addEventListener('submit', async (event) => {
   try {
     const res = await fetch(`/api/sessions/${encodeURIComponent(code)}`);
     if (!res.ok) return showError('#join-error', 'No poll with that code');
-    location.href = `/join/${code}`;
+    location.href = `/join/${encodeURIComponent(code)}`;
   } catch {
     showError('#join-error', 'Could not reach the server');
   }
