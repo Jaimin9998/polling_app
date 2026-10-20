@@ -23,49 +23,6 @@
       </form>
       <p id="join-error" class="error" role="alert" hidden></p>
     </section>
-
-    <section id="gate" class="card" aria-labelledby="gate-h" hidden>
-      <h2 id="gate-h">Organiser sign-in</h2>
-      <p id="gate-intro" class="hint">Enter the organiser password to create polls and open saved events. People who are only joining a poll do not need it.</p>
-      <form id="gate-form" class="row">
-        <input id="gate-password" type="password" autocomplete="current-password" placeholder="Organiser password" aria-label="Organiser password" required>
-        <button type="submit">Unlock</button>
-      </form>
-      <p id="gate-error" class="error" role="alert" hidden></p>
-    </section>
-
-    <section id="create-card" class="card" aria-labelledby="create-h" hidden>
-      <h2 id="create-h">Create a poll</h2>
-      <label class="field-label" for="event-name">Event name (used when saving)</label>
-      <input id="event-name" placeholder="e.g. Diwali evening" maxlength="60" autocomplete="off">
-      <div id="slides"></div>
-      <div class="row">
-        <button type="button" id="add-choice" class="secondary">+ Multiple choice</button>
-        <button type="button" id="add-cloud" class="secondary">+ Word cloud</button>
-      </div>
-      <p id="create-error" class="error" role="alert" hidden></p>
-      <button type="button" id="start">Start presenting</button>
-    </section>
-
-    <section id="saved-card" class="card" aria-labelledby="saved-h" hidden>
-      <h2 id="saved-h">Save and load</h2>
-      <p class="hint">Your work is autosaved in this browser. Save a named draft here, or download a file to keep it or open it on another device.</p>
-      <div class="row">
-        <button type="button" id="save-draft" class="secondary">Save draft</button>
-        <button type="button" id="download-event" class="secondary">Download event file</button>
-        <button type="button" id="load-event-btn" class="secondary">Load event file</button>
-        <input type="file" id="load-event" accept=".json,application/json" hidden>
-      </div>
-      <p id="saved-msg" class="ok" role="status" hidden></p>
-      <p id="saved-error" class="error" role="alert" hidden></p>
-      <div id="server-events-wrap" hidden>
-        <h3 class="drafts-title">Events saved on the server</h3>
-        <ul id="server-events" class="drafts"></ul>
-      </div>
-      <h3 class="drafts-title">Saved drafts</h3>
-      <ul id="drafts" class="drafts"></ul>
-      <button type="button" id="new-poll" class="link">Start a blank poll</button>
-    </section>
   </main>
   <script type="module" src="/home.js"></script>
 </body>

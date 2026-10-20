@@ -120,6 +120,8 @@ export function startServer({
   const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC_DIR, name));
   app.get('/host/:code', page('host.html'));
   app.get('/join/:code', page('join.html'));
+  // The organiser page is public HTML (nothing secret in it); everything it does is behind the password.
+  app.get(['/organise', '/organise/'], page('organise.html'));
   app.use(express.static(PUBLIC_DIR));
 
   app.use((err, req, res, next) => {

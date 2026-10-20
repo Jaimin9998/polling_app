@@ -143,3 +143,5 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--gold-light)
 .drafts .draft-meta { color: var(--muted); font-size: 0.8rem; }
 .drafts .empty-draft { color: var(--muted); }
 .drafts button { padding: 8px 12px; }
+
+a { color: var(--accent); font-weight: 600; }

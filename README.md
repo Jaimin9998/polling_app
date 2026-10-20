@@ -2,6 +2,17 @@
 
 A small Mentimeter-style app. A presenter creates a poll (multiple choice and word cloud slides), shows a join code, and the audience votes from their phones while results update live.
 
+## Pages
+
+| Address | Who | What |
+|---------|-----|------|
+| `/` | audience | Logo and a box to type the join code. Nothing about organising. |
+| `/join/CODE` | audience | Vote from a phone (the QR code points here). |
+| `/organise` | organiser | Sign in with the organiser password, then build polls, save and load events, and start presenting. Not linked from the public page and marked `noindex`; bookmark it. |
+| `/host/CODE` | presenter | Live results and controls. Opened for you when you press **Start presenting**. |
+
+The organiser page itself is public HTML; everything it does is protected by the password on the server.
+
 ## Run
 
 ```bash
@@ -40,17 +51,17 @@ Creating polls (and opening events saved on the server) needs a password; joinin
 
 - Set the password in the `ORGANIZER_PASSWORD` environment variable. It is never stored in the repo.
 - **On Render:** open the service, choose **Environment**, add `ORGANIZER_PASSWORD` with the password you want, and save (Render redeploys). Change the password the same way; everyone is signed out when it changes.
-- **If it is not set on Render, creating polls is locked** (the home page says so) rather than left open. Locally, with no password set, creation is open and the server prints a warning.
+- **If it is not set on Render, creating polls is locked** (the organiser page says so) rather than left open. Locally, with no password set, creation is open and the server prints a warning.
 - Signing in gives this browser tab a signed token valid for 12 hours; the password itself is not kept. Wrong passwords are rate limited (10 tries per 10 minutes per address).
 - This protects who can *create* polls. Anyone with a poll's join code can still vote, as intended.
 
 ## Events saved on the server
 
-Files in `events/` (a `live-polls-event` JSON file, the same format as **Download event file**) appear on the home page under **Events saved on the server** after sign-in, with a **Load** button. They are part of the deploy, so they survive restarts. To add one, build it in the page, click **Download event file**, put the file in `events/` (lowercase letters, digits and hyphens in the file name), and push. `events/20-oct-2026-event.json` is the 20 Oct 2026 event.
+Files in `events/` (a `live-polls-event` JSON file, the same format as **Download event file**) appear on the organiser page under **Events saved on the server** after sign-in, with a **Load** button. They are part of the deploy, so they survive restarts. To add one, build it in the page, click **Download event file**, put the file in `events/` (lowercase letters, digits and hyphens in the file name), and push. `events/20-oct-2026-event.json` is the 20 Oct 2026 event.
 
 ## Saving polls ahead of time
 
-On the home page, the **Save and load** card keeps your questions without a server or login:
+On the organiser page (`/organise`), the **Save and load** card keeps your questions without a server or login:
 
 - **Autosave:** whatever is in the builder is restored when you reopen the page in the same browser.
 - **Save draft:** stores a named draft in this browser; load or delete it from the list.
