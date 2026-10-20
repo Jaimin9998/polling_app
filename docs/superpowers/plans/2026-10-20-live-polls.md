@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-20-live-polls-design.md`
 
+> **Note (after execution):** The code blocks below are the original plan. During execution, code review led to follow-up fixes that are NOT reflected in them: `session.js` word normalisation and returned-array copies, `getResults(session)` without an index parameter, `castVote` rejecting non-string client IDs; `server.js` socket error handling, heartbeat, join timeout, distinct audience count, cross-tab vote sync, startup error handling and the `sweepIntervalMs`/`heartbeatIntervalMs`/`joinTimeoutMs` options; front-end offline handling, double-submit guard, wake/online reconnect, and dark-mode contrast. The spec and the code are the source of truth; see `git log` for the fix commits.
+
 **Working directory for every command:** `/Users/jaimingaliya/Documents/Projects/My Personal Project/Live Polls`
 
 ---
