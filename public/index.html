@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Polls</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <h1>Live Polls</h1>
+      <p>Ask a question. Watch the answers arrive.</p>
+    </header>
+
+    <section class="card" aria-labelledby="join-h">
+      <h2 id="join-h">Join a poll</h2>
+      <form id="join-form" class="row">
+        <input id="join-code" name="code" placeholder="CODE" maxlength="5" autocomplete="off" autocapitalize="characters" aria-label="Join code" required>
+        <button type="submit">Join</button>
+      </form>
+      <p id="join-error" class="error" role="alert" hidden></p>
+    </section>
+
+    <section class="card" aria-labelledby="create-h">
+      <h2 id="create-h">Create a poll</h2>
+      <div id="slides"></div>
+      <div class="row">
+        <button type="button" id="add-choice" class="secondary">+ Multiple choice</button>
+        <button type="button" id="add-cloud" class="secondary">+ Word cloud</button>
+      </div>
+      <p id="create-error" class="error" role="alert" hidden></p>
+      <button type="button" id="start">Start presenting</button>
+    </section>
+  </main>
+  <script type="module" src="/home.js"></script>
+</body>
+</html>
