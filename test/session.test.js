@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSession, generateCode, ValidationError, LIMITS } from '../src/session.js';
+import {
+  createSession,
+  generateCode,
+  ValidationError,
+  LIMITS,
+  castVote,
+  getResults,
+  getMyVote,
+} from '../src/session.js';
 
 const choice = { type: 'choice', prompt: 'Pick one', options: ['A', 'B', 'C'] };
 const cloud = { type: 'wordcloud', prompt: 'One word?' };
@@ -52,4 +60,105 @@ test('createSession rejects invalid slides', () => {
   bad([{ type: 'choice', prompt: 'q', options: Array(9).fill('x') }], /Slide 1.*2 to 8/);
   bad([{ type: 'choice', prompt: 'q', options: ['A', ''] }], /Slide 1.*empty/i);
   bad([{ type: 'choice', prompt: 'q', options: ['A', 'x'.repeat(61)] }], /Slide 1.*60/);
+});
+
+const make = () => createSession([choice, cloud], { code: 'ABCDE' });
+const makeCloud = () => createSession([cloud], { code: 'ABCDE' });
+
+test('choice: counts votes per option', () => {
+  const s = make();
+  assert.deepEqual(castVote(s, 'c1', 's0', 0), { ok: true });
+  castVote(s, 'c2', 's0', 0);
+  castVote(s, 'c3', 's0', 2);
+  assert.deepEqual(getResults(s), { type: 'choice', counts: [2, 0, 1], total: 3 });
+});
+
+test('choice: voting again replaces the earlier vote', () => {
+  const s = make();
+  castVote(s, 'c1', 's0', 0);
+  castVote(s, 'c1', 's0', 1);
+  assert.deepEqual(getResults(s).counts, [0, 1, 0]);
+  assert.equal(getMyVote(s, 'c1'), 1);
+});
+
+test('choice: rejects out-of-range and non-integer values', () => {
+  const s = make();
+  for (const v of [-1, 3, 1.5, '1', null, undefined]) {
+    assert.deepEqual(castVote(s, 'c1', 's0', v), { ok: false, reason: 'invalid' });
+  }
+  assert.equal(getResults(s).total, 0);
+});
+
+test('getMyVote is null before a choice vote and [] before a word cloud vote', () => {
+  assert.equal(getMyVote(make(), 'c1'), null);
+  assert.deepEqual(getMyVote(makeCloud(), 'c1'), []);
+});
+
+test('votes for a slide other than the current one are rejected', () => {
+  const s = make();
+  assert.deepEqual(castVote(s, 'c1', 's1', 'pizza'), { ok: false, reason: 'not_current' });
+});
+
+test('locked sessions reject votes', () => {
+  const s = make();
+  s.locked = true;
+  assert.deepEqual(castVote(s, 'c1', 's0', 0), { ok: false, reason: 'locked' });
+  assert.equal(getResults(s).total, 0);
+});
+
+test('castVote refreshes lastActivity', () => {
+  const s = createSession([choice], { code: 'ABCDE', now: 0 });
+  castVote(s, 'c1', 's0', 0, 900);
+  assert.equal(s.lastActivity, 900);
+});
+
+test('wordcloud: normalises words and counts case-insensitively', () => {
+  const s = makeCloud();
+  castVote(s, 'c1', 's0', '  Pizza ');
+  castVote(s, 'c2', 's0', 'PIZZA');
+  castVote(s, 'c2', 's0', 'tacos');
+  assert.deepEqual(getResults(s), {
+    type: 'wordcloud',
+    words: [
+      { word: 'pizza', count: 2 },
+      { word: 'tacos', count: 1 },
+    ],
+    total: 3,
+  });
+  assert.deepEqual(getMyVote(s, 'c2'), ['pizza', 'tacos']);
+});
+
+test('wordcloud: ties are sorted alphabetically', () => {
+  const s = makeCloud();
+  castVote(s, 'c1', 's0', 'banana');
+  castVote(s, 'c2', 's0', 'apple');
+  assert.deepEqual(getResults(s).words.map((w) => w.word), ['apple', 'banana']);
+});
+
+test('wordcloud: a client may send at most 3 words', () => {
+  const s = makeCloud();
+  for (const w of ['one', 'two', 'three']) assert.equal(castVote(s, 'c1', 's0', w).ok, true);
+  assert.deepEqual(castVote(s, 'c1', 's0', 'four'), { ok: false, reason: 'limit' });
+  assert.deepEqual(getMyVote(s, 'c1'), ['one', 'two', 'three']);
+});
+
+test('wordcloud: the same client cannot send the same word twice', () => {
+  const s = makeCloud();
+  castVote(s, 'c1', 's0', 'pizza');
+  assert.deepEqual(castVote(s, 'c1', 's0', ' Pizza'), { ok: false, reason: 'duplicate' });
+  assert.equal(getResults(s).total, 1);
+});
+
+test('wordcloud: words are capped at 25 characters', () => {
+  const s = makeCloud();
+  castVote(s, 'c1', 's0', 'a'.repeat(40));
+  assert.deepEqual(getMyVote(s, 'c1'), ['a'.repeat(25)]);
+});
+
+test('wordcloud: empty and non-string values are invalid', () => {
+  const s = makeCloud();
+  for (const v of ['', '   ', 5, null, undefined]) {
+    assert.deepEqual(castVote(s, 'c1', 's0', v), { ok: false, reason: 'invalid' });
+  }
+  assert.equal(getResults(s).total, 0);
 });

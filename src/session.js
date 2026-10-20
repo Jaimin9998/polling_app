@@ -73,3 +73,69 @@ export function createSession(slideInputs, { code, now = Date.now() }) {
     votes: new Map(), // slideId -> Map(clientId -> number | string[])
   };
 }
+
+function normalizeWord(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, LIMITS.wordMax).trim();
+}
+
+export function castVote(session, clientId, slideId, value, now = Date.now()) {
+  if (session.locked) return { ok: false, reason: 'locked' };
+  const slide = session.slides[session.currentIndex];
+  if (slide.id !== slideId) return { ok: false, reason: 'not_current' };
+
+  let slideVotes = session.votes.get(slide.id);
+  if (!slideVotes) {
+    slideVotes = new Map();
+    session.votes.set(slide.id, slideVotes);
+  }
+
+  if (slide.type === 'choice') {
+    if (!Number.isInteger(value) || value < 0 || value >= slide.options.length) {
+      return { ok: false, reason: 'invalid' };
+    }
+    slideVotes.set(clientId, value);
+  } else {
+    const word = normalizeWord(value);
+    if (!word) return { ok: false, reason: 'invalid' };
+    const words = slideVotes.get(clientId) ?? [];
+    if (words.includes(word)) return { ok: false, reason: 'duplicate' };
+    if (words.length >= LIMITS.wordsPerClient) return { ok: false, reason: 'limit' };
+    slideVotes.set(clientId, [...words, word]);
+  }
+
+  session.lastActivity = now;
+  return { ok: true };
+}
+
+export function getResults(session, index = session.currentIndex) {
+  const slide = session.slides[index];
+  const slideVotes = session.votes.get(slide.id) ?? new Map();
+
+  if (slide.type === 'choice') {
+    const counts = slide.options.map(() => 0);
+    for (const choice of slideVotes.values()) counts[choice] += 1;
+    return { type: 'choice', counts, total: slideVotes.size };
+  }
+
+  const tally = new Map();
+  let total = 0;
+  for (const words of slideVotes.values()) {
+    for (const word of words) {
+      tally.set(word, (tally.get(word) ?? 0) + 1);
+      total += 1;
+    }
+  }
+  const words = [...tally.entries()]
+    .map(([word, count]) => ({ word, count }))
+    .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word));
+  return { type: 'wordcloud', words, total };
+}
+
+// What this client has already submitted on the current slide.
+export function getMyVote(session, clientId) {
+  const slide = session.slides[session.currentIndex];
+  const mine = session.votes.get(slide.id)?.get(clientId);
+  if (slide.type === 'choice') return mine ?? null;
+  return mine ?? [];
+}
