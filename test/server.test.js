@@ -64,9 +64,9 @@ test('GET /api/qr/:code returns an SVG for a live session and 404 otherwise', as
   assert.equal(missing.status, 404);
 });
 
-function connect() {
+function connect(port = app.port) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${app.port}/ws`);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     const queue = [];
     const waiters = [];
     ws.on('message', (raw) => {
@@ -191,4 +191,49 @@ test('invalid joins and forbidden actions are rejected', { timeout: 5000 }, asyn
   assert.equal((await stranger.next()).reason, 'bad_message');
 
   for (const c of [unknown, badToken, badId, audience, stranger]) c.ws.close();
+});
+
+test('an oversize frame closes only that socket and does not crash the server', { timeout: 5000 }, async () => {
+  const { body } = await createPoll();
+  const client = await joinAudience(body.code, 'client-gggg7777');
+  const closed = new Promise((resolve) => client.ws.once('close', (code) => resolve(code)));
+
+  client.ws.send('x'.repeat(5000)); // maxPayload is 4096
+  assert.equal(await closed, 1009);
+
+  // The process survived and the room still works.
+  const res = await fetch(`${base}/api/sessions/${body.code}`);
+  assert.equal(res.status, 200);
+  const host = await connect();
+  host.send({ type: 'join', code: body.code, hostToken: body.hostToken });
+  const state = await host.until((m) => m.type === 'state' && m.role === 'host' && m.audienceCount === 0);
+  assert.equal(state.audienceCount, 0, 'the oversize client was removed from the room');
+  host.ws.close();
+});
+
+test('expired sessions are swept: clients are told and disconnected, session is gone', { timeout: 5000 }, async () => {
+  const local = await startServer({ port: 0, host: '127.0.0.1', sweepIntervalMs: 20 });
+  try {
+    const localBase = `http://127.0.0.1:${local.port}`;
+    const res = await fetch(`${localBase}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slides: [choiceSlide] }),
+    });
+    const { code } = await res.json();
+
+    const client = await connect(local.port);
+    client.send({ type: 'join', code, clientId: 'client-hhhh8888' });
+    await client.until((m) => m.type === 'state' && m.role === 'audience');
+    const closed = new Promise((resolve) => client.ws.once('close', resolve));
+
+    local.sessions.get(code).session.lastActivity = 0;
+
+    assert.deepEqual(await client.until((m) => m.type === 'error'), { type: 'error', reason: 'not_found' });
+    await closed;
+    assert.equal((await fetch(`${localBase}/api/sessions/${code}`)).status, 404);
+    assert.equal(local.sessions.has(code), false);
+  } finally {
+    await local.close();
+  }
 });

@@ -38,7 +38,7 @@ function send(ws, msg) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
-export function startServer({ port = 3000, host = '0.0.0.0' } = {}) {
+export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = SWEEP_INTERVAL_MS } = {}) {
   const sessions = new Map(); // code -> { session, sockets: Set<WebSocket> }
 
   const app = express();
@@ -166,6 +166,9 @@ export function startServer({ port = 3000, host = '0.0.0.0' } = {}) {
     ws.role = null;
     ws.clientId = null;
 
+    // An oversized or malformed frame must close only this socket, never crash the process.
+    ws.on('error', () => ws.terminate());
+
     ws.on('message', (raw) => {
       let msg;
       try {
@@ -194,7 +197,7 @@ export function startServer({ port = 3000, host = '0.0.0.0' } = {}) {
         ws.close();
       }
     }
-  }, SWEEP_INTERVAL_MS);
+  }, sweepIntervalMs);
   sweeper.unref();
 
   return new Promise((resolve, reject) => {
