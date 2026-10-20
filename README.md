@@ -18,6 +18,7 @@ Environment variables (all optional):
 | `PORT` | `3000` | Port to listen on (hosts like Render set this for you). |
 | `MAX_SESSIONS` | `200` | Maximum polls alive at once. Creating more returns HTTP 503 until some expire. |
 | `TRUST_PROXY` | off | Set to `1` when the app sits behind one HTTPS-terminating proxy (Render, Railway, Fly), so the QR code's join link uses `https`. Leave it off when the app is exposed directly. |
+| `ORGANIZER_PASSWORD` | unset | Password needed to create polls and open server-saved events. See below. |
 
 ## Deploy
 
@@ -32,6 +33,20 @@ The app needs a host that keeps one Node process running and supports WebSockets
 Render's free plan is fine for rehearsing but not for a real event: free services sleep after 15 minutes without traffic (waking takes about a minute) and Render may restart them at any time. For an event, change `plan: free` to `plan: starter` in `render.yaml` and push (or change the plan in the dashboard if you did not use the Blueprint), create the poll shortly before you start, and switch back afterwards.
 
 A local load test with 700 simulated phones and a 10-slide poll (9 multiple choice, 1 word cloud) used about 100 MB of memory on one machine; it was not run on Render.
+
+## Organiser password
+
+Creating polls (and opening events saved on the server) needs a password; joining and presenting a poll that already exists does not.
+
+- Set the password in the `ORGANIZER_PASSWORD` environment variable. It is never stored in the repo.
+- **On Render:** open the service, choose **Environment**, add `ORGANIZER_PASSWORD` with the password you want, and save (Render redeploys). Change the password the same way; everyone is signed out when it changes.
+- **If it is not set on Render, creating polls is locked** (the home page says so) rather than left open. Locally, with no password set, creation is open and the server prints a warning.
+- Signing in gives this browser tab a signed token valid for 12 hours; the password itself is not kept. Wrong passwords are rate limited (10 tries per 10 minutes per address).
+- This protects who can *create* polls. Anyone with a poll's join code can still vote, as intended.
+
+## Events saved on the server
+
+Files in `events/` (a `live-polls-event` JSON file, the same format as **Download event file**) appear on the home page under **Events saved on the server** after sign-in, with a **Load** button. They are part of the deploy, so they survive restarts. To add one, build it in the page, click **Download event file**, put the file in `events/` (lowercase letters, digits and hyphens in the file name), and push. `events/20-oct-2026-event.json` is the 20 Oct 2026 event.
 
 ## Saving polls ahead of time
 

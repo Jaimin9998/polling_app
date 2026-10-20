@@ -16,3 +16,5 @@ services:
         value: "22"
       - key: TRUST_PROXY # Render terminates HTTPS in front of the app; needed so the QR code links use https
         value: "1"
+      # ORGANIZER_PASSWORD is a secret: add it in the Render dashboard (Environment), not in this file.
+      # Until it is set, creating polls on Render is locked.

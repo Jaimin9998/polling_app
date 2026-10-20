@@ -19,8 +19,12 @@ import {
   publicSlide,
   isExpired,
 } from './session.js';
+import { createOrganizerAuth } from './organizer.js';
+import { listEvents, readEventText } from './events.js';
 
-const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
+const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
+const EVENTS_DIR = path.join(ROOT_DIR, 'events');
 
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
@@ -49,8 +53,21 @@ export function startServer({
   joinTimeoutMs = JOIN_TIMEOUT_MS,
   maxSessions = MAX_SESSIONS,
   trustProxy = false, // number of reverse proxies in front of the app (e.g. 1 on Render)
+  organizerPassword, // set: creating polls and reading saved events need it. Unset: open (local use)
+  creationLocked = false, // no password on a public host: refuse creation instead of leaving it open
+  organizerTokenTtlMs,
+  maxLoginAttempts,
+  loginWindowMs,
+  eventsDir = EVENTS_DIR,
 } = {}) {
   const sessions = new Map(); // code -> { session, sockets: Set<WebSocket> }
+  const organizer = createOrganizerAuth({
+    password: organizerPassword,
+    creationLocked,
+    tokenTtlMs: organizerTokenTtlMs,
+    maxLoginAttempts,
+    loginWindowMs,
+  });
 
   const app = express();
   app.disable('x-powered-by');
@@ -59,7 +76,21 @@ export function startServer({
   if (trustProxy) app.set('trust proxy', trustProxy);
   app.use(express.json({ limit: '32kb' }));
 
-  app.post('/api/sessions', (req, res) => {
+  // Organiser endpoints answer per person (and per token), so they must never be cached.
+  app.use(['/api/organizer', '/api/events'], (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
+  app.get('/api/organizer', (req, res) => res.json(organizer.status(req)));
+  app.post('/api/organizer/login', organizer.login);
+  app.get('/api/events', organizer.middleware, async (req, res) => res.json(await listEvents(eventsDir)));
+  app.get('/api/events/:id', organizer.middleware, async (req, res) => {
+    const text = await readEventText(eventsDir, req.params.id);
+    if (text === null) return res.status(404).json({ error: 'not_found' });
+    res.type('application/json').send(text);
+  });
+
+  app.post('/api/sessions', organizer.middleware, (req, res) => {
     if (sessions.size >= maxSessions) {
       return res.status(503).json({ error: 'Too many active polls right now. Please try again later.' });
     }
@@ -221,6 +252,7 @@ export function startServer({
   });
 
   const sweeper = setInterval(() => {
+    organizer.prune();
     const now = Date.now();
     for (const [code, room] of sessions) {
       if (!isExpired(room.session, now)) continue;
@@ -271,13 +303,21 @@ export function startServer({
 // `npm start`: run directly and print every address a phone could use.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const wanted = Number(process.env.PORT) || 3000;
+  const organizerPassword = process.env.ORGANIZER_PASSWORD || undefined;
+  // Render sets RENDER=true. A public host with no password must lock creation, not leave it open.
+  const creationLocked = !organizerPassword && Boolean(process.env.RENDER);
   startServer({
     port: wanted,
     trustProxy: Number(process.env.TRUST_PROXY) || false,
     maxSessions: Number(process.env.MAX_SESSIONS) || undefined,
+    organizerPassword,
+    creationLocked,
   })
     .then(({ port }) => {
       console.log('Live Polls is running');
+      if (organizerPassword) console.log('  Organiser password: ON (creating polls needs it)');
+      else if (creationLocked) console.warn('  WARNING: ORGANIZER_PASSWORD is not set, so creating polls is LOCKED. Set it in the host\'s environment settings.');
+      else console.warn('  Organiser password: not set, so anyone who can reach this server can create polls. Set ORGANIZER_PASSWORD to protect it.');
       console.log(`  http://localhost:${port}`);
       for (const addrs of Object.values(os.networkInterfaces())) {
         for (const a of addrs ?? []) {

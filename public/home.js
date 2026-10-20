@@ -116,10 +116,14 @@ $('#start').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/sessions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ slides: collectSlides() }),
     });
     const body = await res.json();
+    if (res.status === 401) {
+      start.disabled = false;
+      return lockBuilder('Your sign-in expired. Enter the password again.');
+    }
     if (!res.ok) {
       start.disabled = false;
       return showError('#create-error', body.error ?? 'Could not create the poll');
@@ -316,3 +320,141 @@ renderDrafts();
 slidesEl.addEventListener('input', scheduleAutosave);
 nameEl.addEventListener('input', scheduleAutosave);
 new MutationObserver(scheduleAutosave).observe(slidesEl, { childList: true, subtree: true });
+
+// ---- Organiser password gate ----
+// The server decides whether a password is needed (ORGANIZER_PASSWORD). Joining a poll never is.
+// After a correct login the server returns a short-lived signed token; it is kept for this tab
+// only (sessionStorage) and sent with requests that create polls or read saved events.
+
+const TOKEN_KEY = 'live-polls:organizer-token';
+const GATE_INTRO = $('#gate-intro').textContent;
+let organizerToken = '';
+try {
+  organizerToken = sessionStorage.getItem(TOKEN_KEY) ?? '';
+} catch {}
+
+function authHeaders() {
+  return organizerToken ? { Authorization: `Bearer ${organizerToken}` } : {};
+}
+
+function rememberToken(token) {
+  organizerToken = token;
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {}
+}
+
+function showBuilder() {
+  $('#gate').hidden = true;
+  $('#create-card').hidden = false;
+  $('#saved-card').hidden = false;
+  loadServerEvents();
+}
+
+function showGate(message = '') {
+  $('#create-card').hidden = true;
+  $('#saved-card').hidden = true;
+  $('#gate').hidden = false;
+  $('#gate-form').hidden = false;
+  $('#gate-intro').textContent = GATE_INTRO;
+  showError('#gate-error', message);
+  $('#gate-password').focus();
+}
+
+function showLocked() {
+  showGate();
+  $('#gate-form').hidden = true;
+  $('#gate-intro').textContent =
+    'Creating polls is locked: no organiser password has been set on this server. The site owner needs to set ORGANIZER_PASSWORD.';
+}
+
+function lockBuilder(message) {
+  rememberToken('');
+  showGate(message);
+}
+
+async function checkOrganizer() {
+  try {
+    const status = await (await fetch('/api/organizer', { headers: authHeaders() })).json();
+    if (status.locked) return showLocked();
+    if (status.authorized) return showBuilder();
+    rememberToken(''); // a stale token is useless
+    showGate();
+  } catch {
+    showGate('Could not reach the server. Reload the page to try again.');
+  }
+}
+
+$('#gate-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  showError('#gate-error', '');
+  const input = $('#gate-password');
+  try {
+    const res = await fetch('/api/organizer/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: input.value }),
+    });
+    const body = await res.json();
+    if (!res.ok) return showError('#gate-error', body.error ?? 'Could not sign in');
+    rememberToken(body.token);
+    input.value = '';
+    showBuilder();
+  } catch {
+    showError('#gate-error', 'Could not reach the server.');
+  }
+});
+
+// Events saved on the server (the events/ folder of the deploy): list them and load one into the builder.
+async function loadServerEvents() {
+  const wrap = $('#server-events-wrap');
+  try {
+    const res = await fetch('/api/events', { headers: authHeaders() });
+    if (res.status === 401) return lockBuilder('Your sign-in expired. Enter the password again.');
+    const events = res.ok ? await res.json() : [];
+    wrap.hidden = events.length === 0;
+    $('#server-events').replaceChildren(
+      ...events.map((ev) =>
+        el(
+          'li',
+          {},
+          el(
+            'div',
+            { className: 'draft-info' },
+            el('span', { className: 'draft-name' }, ev.name),
+            el('span', { className: 'draft-meta' }, `${ev.slides} ${ev.slides === 1 ? 'slide' : 'slides'}`),
+          ),
+          el(
+            'button',
+            {
+              type: 'button',
+              className: 'secondary',
+              'aria-label': `Load saved event ${ev.name}`,
+              onclick: () => loadServerEvent(ev),
+            },
+            'Load',
+          ),
+        ),
+      ),
+    );
+  } catch {
+    wrap.hidden = true; // saved events are a convenience; the builder still works without them
+  }
+}
+
+async function loadServerEvent(ev) {
+  try {
+    const res = await fetch(`/api/events/${encodeURIComponent(ev.id)}`, { headers: authHeaders() });
+    if (res.status === 401) return lockBuilder('Your sign-in expired. Enter the password again.');
+    if (!res.ok) throw new EventFileError('That saved event could not be loaded.');
+    const event = parseEventFile(await res.text());
+    if (!confirmReplace()) return;
+    setBuilder(event);
+    say(`Loaded "${event.name}" (${event.slides.length} ${event.slides.length === 1 ? 'slide' : 'slides'}).`);
+  } catch (err) {
+    fail(err);
+  }
+}
+
+checkOrganizer();
