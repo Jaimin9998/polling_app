@@ -13,6 +13,8 @@ import {
   setLocked,
   publicSlide,
   isExpired,
+  normalizeWord,
+  normalizeCode,
 } from '../src/session.js';
 
 const choice = { type: 'choice', prompt: 'Pick one', options: ['A', 'B', 'C'] };
@@ -106,7 +108,7 @@ test('votes for a slide other than the current one are rejected', () => {
 
 test('locked sessions reject votes', () => {
   const s = make();
-  s.locked = true;
+  setLocked(s, true);
   assert.deepEqual(castVote(s, 'c1', 's0', 0), { ok: false, reason: 'locked' });
   assert.equal(getResults(s).total, 0);
 });
@@ -217,4 +219,241 @@ test('isExpired is true only after the idle timeout', () => {
   const s = createSession([choice], { code: 'ABCDE', now: 0 });
   assert.equal(isExpired(s, IDLE_TIMEOUT_MS), false);
   assert.equal(isExpired(s, IDLE_TIMEOUT_MS + 1), true);
+});
+
+// ---- hardening tests ----
+
+test('normalizeWord trims and lowercases', () => {
+  assert.equal(normalizeWord('  Pizza  '), 'pizza');
+  assert.equal(normalizeWord('  HeLLo   WORLD '), 'hello world');
+});
+
+test('normalizeWord returns empty string for non-strings', () => {
+  for (const v of [5, null, undefined, {}, [], true]) assert.equal(normalizeWord(v), '');
+});
+
+test('normalizeWord applies NFC so equivalent forms are identical', () => {
+  const nfc = 'é';
+  const nfd = 'é';
+  assert.notEqual(nfc, nfd);
+  assert.equal(normalizeWord(nfd), normalizeWord(nfc));
+  assert.equal(normalizeWord(nfd), nfc);
+});
+
+test('normalizeWord truncates by code points and never splits a surrogate pair', () => {
+  const out = normalizeWord('\u{1F600}'.repeat(30));
+  assert.equal(Array.from(out).length, LIMITS.wordMax);
+  assert.equal(out.isWellFormed(), true);
+});
+
+test('normalizeWord trims a trailing space exposed by truncation', () => {
+  assert.equal(normalizeWord('a'.repeat(24) + ' b'), 'a'.repeat(24));
+});
+
+test('normalizeWord rejects zero-width-only input', () => {
+  for (const v of ['​', '‍', '⁠', '﻿', '​‍⁠', ' ​ ']) {
+    assert.equal(normalizeWord(v), '', JSON.stringify(v));
+  }
+});
+
+test('normalizeWord rejects control-only input', () => {
+  assert.equal(normalizeWord('\u0000\u0007'), '');
+});
+
+test('normalizeWord collapses internal whitespace including tabs and newlines', () => {
+  assert.equal(normalizeWord('a\tb\nc  d'), 'a b c d');
+  assert.equal(normalizeWord('a\u0000b'), 'a b');
+});
+
+test('normalizeWord strips invisible format characters inside a word', () => {
+  assert.equal(normalizeWord('pi​zza'), 'pizza');
+});
+
+test('normalizeWord keeps ZWJ emoji sequences intact', () => {
+  const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
+  assert.equal(normalizeWord(family), family);
+  assert.equal(normalizeWord(family).length, family.length);
+});
+
+test('normalizeWord accepts emoji and punctuation as visible', () => {
+  assert.equal(normalizeWord('\u{1F600}'), '\u{1F600}');
+  assert.equal(normalizeWord('!?'), '!?');
+});
+
+test('wordcloud: a zero-width-only vote is invalid', () => {
+  const s = makeCloud();
+  assert.deepEqual(castVote(s, 'c1', 's0', '​'), { ok: false, reason: 'invalid' });
+  assert.equal(getResults(s).total, 0);
+});
+
+test('wordcloud: NFC and NFD forms of the same word tally together', () => {
+  const s = makeCloud();
+  castVote(s, 'c1', 's0', 'é');
+  castVote(s, 'c2', 's0', 'é');
+  assert.deepEqual(getResults(s).words, [{ word: 'é', count: 2 }]);
+});
+
+test('wordcloud: __proto__ and constructor are ordinary words and __proto__ is an ordinary clientId', () => {
+  const s = makeCloud();
+  assert.equal(castVote(s, '__proto__', 's0', '__proto__').ok, true);
+  assert.equal(castVote(s, '__proto__', 's0', 'constructor').ok, true);
+  assert.equal(castVote(s, 'c2', 's0', '__proto__').ok, true);
+  assert.deepEqual(getResults(s), {
+    type: 'wordcloud',
+    words: [
+      { word: '__proto__', count: 2 },
+      { word: 'constructor', count: 1 },
+    ],
+    total: 3,
+  });
+  assert.deepEqual(getMyVote(s, '__proto__'), ['__proto__', 'constructor']);
+  assert.equal(({}).polluted, undefined);
+});
+
+test('getMyVote is per client', () => {
+  const s = makeCloud();
+  castVote(s, 'A', 's0', 'pizza');
+  assert.deepEqual(getMyVote(s, 'A'), ['pizza']);
+  assert.deepEqual(getMyVote(s, 'B'), []);
+  const c = make();
+  castVote(c, 'A', 's0', 1);
+  assert.equal(getMyVote(c, 'B'), null);
+});
+
+test('mutating the array returned by getMyVote does not change session state', () => {
+  const s = makeCloud();
+  castVote(s, 'A', 's0', 'pizza');
+  const mine = getMyVote(s, 'A');
+  mine.push('hacked');
+  assert.deepEqual(getMyVote(s, 'A'), ['pizza']);
+  assert.equal(getResults(s).total, 1);
+  assert.deepEqual(getResults(s).words, [{ word: 'pizza', count: 1 }]);
+});
+
+test('mutating publicSlide options does not change the slide', () => {
+  const s = make();
+  const pub = publicSlide(s.slides[0]);
+  pub.options.push('Z');
+  pub.options[0] = 'changed';
+  assert.deepEqual(s.slides[0].options, ['A', 'B', 'C']);
+});
+
+test('castVote rejects non-string or empty clientId and stores nothing', () => {
+  for (const id of [{}, '', 5, null, undefined]) {
+    assert.deepEqual(castVote(make(), id, 's0', 0), { ok: false, reason: 'invalid' });
+  }
+  const s = make();
+  castVote(s, '', 's0', 0);
+  castVote(s, 5, 's0', 0);
+  assert.equal(getResults(s).total, 0);
+  assert.equal(s.votes.size, 0);
+});
+
+test('castVote checks clientId before the locked state', () => {
+  const s = make();
+  setLocked(s, true);
+  assert.deepEqual(castVote(s, '', 's0', 0), { ok: false, reason: 'invalid' });
+});
+
+test('wordcloud: locked sessions reject votes', () => {
+  const s = makeCloud();
+  setLocked(s, true);
+  assert.deepEqual(castVote(s, 'c1', 's0', 'pizza'), { ok: false, reason: 'locked' });
+  assert.equal(getResults(s).total, 0);
+});
+
+test('votes persist across a slide round trip', () => {
+  const s = make();
+  castVote(s, 'c1', 's0', 0);
+  setSlide(s, 1);
+  assert.equal(castVote(s, 'c1', 's1', 'one').ok, true);
+  setSlide(s, 0);
+  assert.deepEqual(getResults(s), { type: 'choice', counts: [1, 0, 0], total: 1 });
+  assert.equal(getMyVote(s, 'c1'), 0);
+  assert.equal(castVote(s, 'c1', 's0', 2).ok, true);
+  assert.deepEqual(getResults(s).counts, [0, 0, 1]);
+  setSlide(s, 1);
+  assert.deepEqual(getMyVote(s, 'c1'), ['one']);
+  castVote(s, 'c1', 's1', 'two');
+  castVote(s, 'c1', 's1', 'three');
+  assert.deepEqual(castVote(s, 'c1', 's1', 'four'), { ok: false, reason: 'limit' });
+});
+
+test('setSlide to the same index while locked unlocks', () => {
+  const s = make();
+  setLocked(s, true);
+  assert.equal(setSlide(s, 0), true);
+  assert.equal(s.locked, false);
+  assert.equal(castVote(s, 'c1', 's0', 0).ok, true);
+});
+
+test('wordcloud: ties are ordered by code unit, not locale', () => {
+  const s = makeCloud();
+  const words = ['cherry', 'banana', 'apple', 'ärger', 'zebra'];
+  words.forEach((w, i) => castVote(s, `c${i}`, 's0', w));
+  assert.deepEqual(
+    getResults(s).words.map((w) => w.word),
+    ['apple', 'banana', 'cherry', 'zebra', 'ärger'],
+  );
+});
+
+test('getResults takes no index and always reports the current slide', () => {
+  const s = make();
+  castVote(s, 'c1', 's0', 0);
+  setSlide(s, 1);
+  assert.equal(getResults(s, 0).type, 'wordcloud');
+  assert.equal(getResults.length, 1);
+});
+
+test('createSession accepts boundary values', () => {
+  assert.equal(createSession(Array.from({ length: 20 }, () => cloud), { code: 'ABCDE' }).slides.length, 20);
+  const p140 = 'x'.repeat(140);
+  assert.equal(createSession([{ type: 'wordcloud', prompt: p140 }], { code: 'ABCDE' }).slides[0].prompt, p140);
+  assert.equal(createSession([{ type: 'choice', prompt: 'q', options: ['a', 'b'] }], { code: 'ABCDE' }).slides[0].options.length, 2);
+  assert.equal(createSession([{ type: 'choice', prompt: 'q', options: Array(8).fill('x') }], { code: 'ABCDE' }).slides[0].options.length, 8);
+  const o60 = 'y'.repeat(60);
+  assert.equal(createSession([{ type: 'choice', prompt: 'q', options: ['a', o60] }], { code: 'ABCDE' }).slides[0].options[1], o60);
+});
+
+test('createSession reports the failing slide number', () => {
+  bad([choice, { type: 'poll', prompt: 'x' }], /Slide 2/);
+  bad([cloud, cloud, { type: 'wordcloud', prompt: '' }], /Slide 3/);
+});
+
+test('createSession drops options on word clouds and strips unknown fields', () => {
+  const s = createSession(
+    [
+      { type: 'wordcloud', prompt: 'q', options: ['a', 'b'], extra: 1 },
+      { type: 'choice', prompt: 'q', options: ['a', 'b'], id: 'evil', extra: { x: 1 } },
+    ],
+    { code: 'ABCDE' },
+  );
+  assert.equal('options' in s.slides[0], false);
+  assert.deepEqual(Object.keys(s.slides[0]).sort(), ['id', 'prompt', 'type']);
+  assert.deepEqual(Object.keys(s.slides[1]).sort(), ['id', 'options', 'prompt', 'type']);
+  assert.equal(s.slides[1].id, 's1');
+});
+
+test('createSession yields distinct host tokens and does not alias caller options', () => {
+  const a = createSession([choice], { code: 'ABCDE' });
+  const b = createSession([choice], { code: 'ABCDE' });
+  assert.notEqual(a.hostToken, b.hostToken);
+  const options = ['A', 'B'];
+  const s = createSession([{ type: 'choice', prompt: 'q', options }], { code: 'ABCDE' });
+  options.push('C');
+  options[0] = 'changed';
+  assert.deepEqual(s.slides[0].options, ['A', 'B']);
+});
+
+test('normalizeCode trims and uppercases, null-safe', () => {
+  assert.equal(normalizeCode('  abc12 '), 'ABC12');
+  assert.equal(normalizeCode(null), '');
+  assert.equal(normalizeCode(undefined), '');
+});
+
+test('validation errors are named ValidationError', () => {
+  assert.throws(
+    () => createSession([], { code: 'ABCDE' }),
+    (err) => err.name === 'ValidationError' && err instanceof ValidationError && err instanceof Error,
+  );
 });

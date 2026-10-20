@@ -16,7 +16,12 @@ export const IDLE_TIMEOUT_MS = 4 * 60 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 5;
 
-export class ValidationError extends Error {}
+export class ValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
 
 export function normalizeCode(code) {
   return String(code ?? '').trim().toUpperCase();
@@ -74,12 +79,29 @@ export function createSession(slideInputs, { code, now = Date.now() }) {
   };
 }
 
-function normalizeWord(value) {
+const CONTROL_CHARS = /\p{Cc}/gu;
+// Invisible format characters (zero width space, word joiner, BOM, bidi marks...) except
+// U+200D zero width joiner, which emoji sequences need. JS has no class subtraction, so
+// a negative lookahead excludes the ZWJ before matching \p{Cf}.
+const FORMAT_CHARS_EXCEPT_ZWJ = /(?!‍)\p{Cf}/gu;
+const VISIBLE_CHAR = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
+// Canonical form of a word cloud entry; '' means "not acceptable".
+export function normalizeWord(value) {
   if (typeof value !== 'string') return '';
-  return value.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, LIMITS.wordMax).trim();
+  const cleaned = value
+    .normalize('NFC')
+    .replace(CONTROL_CHARS, ' ')
+    .replace(FORMAT_CHARS_EXCEPT_ZWJ, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  if (!VISIBLE_CHAR.test(cleaned)) return '';
+  return Array.from(cleaned).slice(0, LIMITS.wordMax).join('').trim();
 }
 
 export function castVote(session, clientId, slideId, value, now = Date.now()) {
+  if (typeof clientId !== 'string' || clientId === '') return { ok: false, reason: 'invalid' };
   if (session.locked) return { ok: false, reason: 'locked' };
   const slide = session.slides[session.currentIndex];
   if (slide.id !== slideId) return { ok: false, reason: 'not_current' };
@@ -108,8 +130,8 @@ export function castVote(session, clientId, slideId, value, now = Date.now()) {
   return { ok: true };
 }
 
-export function getResults(session, index = session.currentIndex) {
-  const slide = session.slides[index];
+export function getResults(session) {
+  const slide = session.slides[session.currentIndex];
   const slideVotes = session.votes.get(slide.id) ?? new Map();
 
   if (slide.type === 'choice') {
@@ -128,7 +150,7 @@ export function getResults(session, index = session.currentIndex) {
   }
   const words = [...tally.entries()]
     .map(([word, count]) => ({ word, count }))
-    .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word));
+    .sort((a, b) => b.count - a.count || (a.word < b.word ? -1 : a.word > b.word ? 1 : 0));
   return { type: 'wordcloud', words, total };
 }
 
@@ -137,7 +159,7 @@ export function getMyVote(session, clientId) {
   const slide = session.slides[session.currentIndex];
   const mine = session.votes.get(slide.id)?.get(clientId);
   if (slide.type === 'choice') return mine ?? null;
-  return mine ?? [];
+  return mine ? [...mine] : [];
 }
 
 export function setSlide(session, index, now = Date.now()) {
@@ -155,7 +177,7 @@ export function setLocked(session, locked, now = Date.now()) {
 
 export function publicSlide(slide) {
   const { id, type, prompt, options } = slide;
-  return options ? { id, type, prompt, options } : { id, type, prompt };
+  return options ? { id, type, prompt, options: [...options] } : { id, type, prompt };
 }
 
 export function isExpired(session, now = Date.now()) {
