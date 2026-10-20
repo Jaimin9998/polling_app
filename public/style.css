@@ -129,3 +129,17 @@ button.link { padding: 4px 0; color: var(--accent); background: none; font-weigh
 .choice.selected { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-light) inset; }
 button:focus-visible, input:focus-visible { outline: 3px solid var(--gold-light); outline-offset: 2px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---- Save and load ---- */
+.field-label { display: block; margin: 0 0 4px; color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+#event-name { width: 100%; margin-bottom: 14px; }
+.hint { margin: 0 0 12px; color: var(--muted); font-size: 0.9rem; }
+.ok { margin: 8px 0; color: #2e6b2e; font-weight: 500; }
+.drafts-title { margin: 16px 0 6px; font-size: 0.95rem; }
+.drafts { margin: 0 0 8px; padding: 0; list-style: none; }
+.drafts li { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--accent-soft); }
+.drafts .draft-info { flex: 1; min-width: 0; }
+.drafts .draft-name { display: block; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.drafts .draft-meta { color: var(--muted); font-size: 0.8rem; }
+.drafts .empty-draft { color: var(--muted); }
+.drafts button { padding: 8px 12px; }

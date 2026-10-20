@@ -33,6 +33,16 @@ Render's free plan is fine for rehearsing but not for a real event: free service
 
 A local load test with 700 simulated phones and a 10-slide poll (9 multiple choice, 1 word cloud) used about 100 MB of memory on one machine; it was not run on Render.
 
+## Saving polls ahead of time
+
+On the home page, the **Save and load** card keeps your questions without a server or login:
+
+- **Autosave:** whatever is in the builder is restored when you reopen the page in the same browser.
+- **Save draft:** stores a named draft in this browser; load or delete it from the list.
+- **Download event file / Load event file:** a small `.json` file you can keep, email, or open on another device. Loading checks the file and refuses anything invalid.
+
+Drafts live in one browser on one device (clearing site data deletes them), so download an event file for anything important. At event time, load it and press **Start presenting**; the join code only exists once you start.
+
 ## Test
 
 ```bash

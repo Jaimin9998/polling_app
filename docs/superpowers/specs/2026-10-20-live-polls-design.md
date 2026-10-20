@@ -40,6 +40,7 @@ Server rules:
 - **Audience view** (`/join/CODE`): mobile-first. Shows the current question, lets the user vote, then shows a "vote received" state. Updates by itself when the presenter changes slide. Rejected votes show a short note (for example "Voting is locked").
 
 Behaviour worth knowing:
+- Save and load (home page, browser only, no server involved): the builder autosaves to the browser's localStorage and is restored on reload; named drafts are kept in the same place; "Download event file" and "Load event file" use a `live-polls-event` JSON file (format, version 1, name, slides) that is validated against the same slide limits as the server before it fills the builder. Starting a poll still sends the slides to `POST /api/sessions`, which validates them again.
 - Creating a poll redirects to `/host/CODE` and keeps the host token in the browser (localStorage, falling back to sessionStorage). Opening the presenter page on another device or browser therefore shows a "created on another device" message.
 - While the server is unreachable, clients show "Reconnecting…". They reach the "ended" screen only once the server is back and no longer knows the code.
 - The QR code encodes the host the presenter used, so the presenter should open the LAN address printed on startup rather than `localhost`.
