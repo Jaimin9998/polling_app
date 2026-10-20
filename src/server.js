@@ -23,6 +23,8 @@ import {
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const JOIN_TIMEOUT_MS = 10 * 1000;
 const CLIENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 function tokensMatch(a, b) {
@@ -38,10 +40,17 @@ function send(ws, msg) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
-export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = SWEEP_INTERVAL_MS } = {}) {
+export function startServer({
+  port = 3000,
+  host = '0.0.0.0',
+  sweepIntervalMs = SWEEP_INTERVAL_MS,
+  heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
+  joinTimeoutMs = JOIN_TIMEOUT_MS,
+} = {}) {
   const sessions = new Map(); // code -> { session, sockets: Set<WebSocket> }
 
   const app = express();
+  app.disable('x-powered-by');
   app.use(express.json({ limit: '32kb' }));
 
   app.post('/api/sessions', (req, res) => {
@@ -73,9 +82,10 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
   app.get('/join/:code', page('join.html'));
   app.use(express.static(PUBLIC_DIR));
 
-  // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
     const status = err.status && err.status < 500 ? err.status : 500;
+    if (status === 500) console.error(err);
     res.status(status).json({ error: status === 500 ? 'Server error' : 'Bad request' });
   });
 
@@ -93,9 +103,9 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
       locked: session.locked,
     };
     if (ws.role === 'host') {
-      let audienceCount = 0;
-      for (const s of room.sockets) if (s.role === 'audience') audienceCount += 1;
-      return { ...base, results: getResults(session), audienceCount };
+      const clients = new Set();
+      for (const s of room.sockets) if (s.role === 'audience') clients.add(s.clientId);
+      return { ...base, results: getResults(session), audienceCount: clients.size };
     }
     return { ...base, myVote: getMyVote(session, ws.clientId) };
   }
@@ -112,6 +122,7 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
 
   function handleJoin(ws, msg) {
     if (ws.room) return send(ws, error('already_joined'));
+    if (typeof msg.code !== 'string') return send(ws, error('invalid'));
     const room = sessions.get(normalizeCode(msg.code));
     if (!room) return send(ws, error('not_found'));
 
@@ -128,7 +139,7 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
     ws.room = room;
     room.sockets.add(ws);
     send(ws, stateFor(room, ws));
-    notifyHosts(room); // audience count changed
+    if (ws.role === 'audience') notifyHosts(room); // audience count changed
   }
 
   function handleMessage(ws, msg) {
@@ -145,7 +156,8 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
         if (ws.role !== 'audience') return send(ws, error('forbidden'));
         const result = castVote(session, ws.clientId, msg.slideId, msg.value, now);
         if (!result.ok) return send(ws, error(result.reason));
-        send(ws, stateFor(room, ws));
+        // Every tab of this voter (same clientId) shows the same vote.
+        for (const s of room.sockets) if (s.clientId === ws.clientId) send(s, stateFor(room, s));
         return notifyHosts(room);
       }
       case 'setSlide':
@@ -154,6 +166,7 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
         return notifyAll(room);
       case 'lock':
         if (ws.role !== 'host') return send(ws, error('forbidden'));
+        if (typeof msg.locked !== 'boolean') return send(ws, error('invalid'));
         setLocked(session, msg.locked, now);
         return notifyAll(room);
       default:
@@ -165,6 +178,16 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
     ws.room = null;
     ws.role = null;
     ws.clientId = null;
+    ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
+
+    // A socket that never joins a room would otherwise hold a connection forever.
+    const joinTimer = setTimeout(() => {
+      if (!ws.room) ws.terminate();
+    }, joinTimeoutMs);
+    joinTimer.unref();
 
     // An oversized or malformed frame must close only this socket, never crash the process.
     ws.on('error', () => ws.terminate());
@@ -180,6 +203,7 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
     });
 
     ws.on('close', () => {
+      clearTimeout(joinTimer);
       const room = ws.room;
       if (!room) return;
       room.sockets.delete(ws);
@@ -200,7 +224,23 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
   }, sweepIntervalMs);
   sweeper.unref();
 
+  // Drop sockets that vanished without a close (dead phones, sleeping laptops).
+  const heartbeat = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (ws.isAlive === false) {
+        ws.terminate();
+        continue;
+      }
+      ws.isAlive = false;
+      ws.ping();
+    }
+  }, heartbeatIntervalMs);
+  heartbeat.unref();
+
   return new Promise((resolve, reject) => {
+    // WebSocketServer re-emits http-server errors (e.g. EADDRINUSE) on wss, which
+    // would throw if nobody listens there.
+    wss.on('error', reject);
     server.once('error', reject);
     server.listen(port, host, () => {
       resolve({
@@ -209,6 +249,7 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
         close: () =>
           new Promise((done) => {
             clearInterval(sweeper);
+            clearInterval(heartbeat);
             for (const ws of wss.clients) ws.terminate();
             server.closeAllConnections();
             wss.close(() => server.close(() => done()));
@@ -221,15 +262,24 @@ export function startServer({ port = 3000, host = '0.0.0.0', sweepIntervalMs = S
 // `npm start`: run directly and print every address a phone could use.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const wanted = Number(process.env.PORT) || 3000;
-  startServer({ port: wanted }).then(({ port }) => {
-    console.log('Live Polls is running');
-    console.log(`  http://localhost:${port}`);
-    for (const addrs of Object.values(os.networkInterfaces())) {
-      for (const a of addrs ?? []) {
-        if (a.family === 'IPv4' && !a.internal) {
-          console.log(`  http://${a.address}:${port}   <- open this one so phones can join`);
+  startServer({ port: wanted })
+    .then(({ port }) => {
+      console.log('Live Polls is running');
+      console.log(`  http://localhost:${port}`);
+      for (const addrs of Object.values(os.networkInterfaces())) {
+        for (const a of addrs ?? []) {
+          if (a.family === 'IPv4' && !a.internal) {
+            console.log(`  http://${a.address}:${port}   <- open this one so phones can join`);
+          }
         }
       }
-    }
-  });
+    })
+    .catch((err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${wanted} is already in use. Set PORT to use another one.`);
+      } else {
+        console.error(err.message);
+      }
+      process.exit(1);
+    });
 }

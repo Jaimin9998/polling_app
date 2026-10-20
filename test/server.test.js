@@ -237,3 +237,138 @@ test('expired sessions are swept: clients are told and disconnected, session is 
     await local.close();
   }
 });
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function createPollOn(localBase) {
+  const res = await fetch(`${localBase}/api/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slides: [choiceSlide] }),
+  });
+  return res.json();
+}
+
+test('startServer rejects with EADDRINUSE when the port is taken', { timeout: 5000 }, async () => {
+  const first = await startServer({ port: 0, host: '127.0.0.1' });
+  try {
+    await assert.rejects(startServer({ port: first.port, host: '127.0.0.1' }), { code: 'EADDRINUSE' });
+  } finally {
+    await first.close();
+  }
+});
+
+test('audience count is per distinct clientId, not per socket', { timeout: 5000 }, async () => {
+  const { body } = await createPoll();
+  const host = await joinHost(body.code, body.hostToken);
+  const tab1 = await joinAudience(body.code, 'client-iiii9999');
+  const tab2 = await joinAudience(body.code, 'client-iiii9999');
+
+  // A host-sent lock toggle gives a fresh state, after both joins were processed.
+  host.send({ type: 'lock', locked: true });
+  const snapshot = await host.until((m) => m.type === 'state' && m.locked === true);
+  assert.equal(snapshot.audienceCount, 1, 'two sockets, one clientId');
+
+  tab1.ws.close();
+  assert.equal((await host.next()).audienceCount, 1, 'the other tab keeps the client counted');
+  tab2.ws.close();
+  assert.equal((await host.next()).audienceCount, 0);
+  host.ws.close();
+});
+
+test('a client that never answers pings is terminated', { timeout: 5000 }, async () => {
+  const local = await startServer({ port: 0, host: '127.0.0.1', heartbeatIntervalMs: 30 });
+  try {
+    const { code } = await createPollOn(`http://127.0.0.1:${local.port}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${local.port}/ws`, { autoPong: false });
+    await new Promise((resolve, reject) => {
+      ws.once('open', resolve);
+      ws.once('error', reject);
+    });
+    const closed = new Promise((resolve) => ws.once('close', resolve));
+    ws.send(JSON.stringify({ type: 'join', code, clientId: 'client-kkkk1111' }));
+    await closed;
+    assert.equal(ws.readyState, WebSocket.CLOSED);
+  } finally {
+    await local.close();
+  }
+});
+
+test('a socket that never joins is closed after the join timeout; a joined one survives', { timeout: 5000 }, async () => {
+  const local = await startServer({ port: 0, host: '127.0.0.1', joinTimeoutMs: 30 });
+  try {
+    const { code } = await createPollOn(`http://127.0.0.1:${local.port}`);
+
+    const silent = await connect(local.port);
+    const silentClosed = new Promise((resolve) => silent.ws.once('close', resolve));
+
+    const joined = await connect(local.port);
+    joined.send({ type: 'join', code, clientId: 'client-llll2222' });
+    await joined.until((m) => m.type === 'state' && m.role === 'audience');
+
+    await silentClosed;
+    await sleep(90);
+    assert.equal(joined.ws.readyState, WebSocket.OPEN);
+    joined.ws.close();
+  } finally {
+    await local.close();
+  }
+});
+
+test('a vote is synced to every socket with the same clientId', { timeout: 5000 }, async () => {
+  const { body } = await createPoll();
+  const tab1 = await joinAudience(body.code, 'client-mmmm3333');
+  const tab2 = await joinAudience(body.code, 'client-mmmm3333');
+
+  tab1.send({ type: 'vote', slideId: 's0', value: 1 });
+  const synced = await tab2.until((m) => m.type === 'state' && m.myVote === 1);
+  assert.equal(synced.myVote, 1);
+  tab1.ws.close();
+  tab2.ws.close();
+});
+
+test('a host joining does not trigger a duplicate state to hosts', { timeout: 5000 }, async () => {
+  const { body } = await createPoll();
+  const host = await joinHost(body.code, body.hostToken);
+  const audience = await joinAudience(body.code, 'client-nnnn4444');
+  const next = await host.next();
+  assert.equal(next.type, 'state');
+  assert.equal(next.audienceCount, 1, 'first message after the join state is the audience-count update');
+  audience.ws.close();
+  host.ws.close();
+});
+
+test('lock requires a boolean and leaves the lock state unchanged otherwise', { timeout: 5000 }, async () => {
+  const { body } = await createPoll();
+  const host = await joinHost(body.code, body.hostToken);
+  host.send({ type: 'lock', locked: true });
+  await host.until((m) => m.type === 'state' && m.locked === true);
+
+  host.send({ type: 'lock' });
+  assert.equal((await host.until((m) => m.type === 'error')).reason, 'invalid');
+  host.send({ type: 'lock', locked: 'yes' });
+  assert.equal((await host.until((m) => m.type === 'error')).reason, 'invalid');
+  assert.equal(app.sessions.get(body.code).session.locked, true);
+  host.ws.close();
+});
+
+test('join requires a string code', { timeout: 5000 }, async () => {
+  const { body } = await createPoll();
+  const client = await connect();
+  client.send({ type: 'join', code: [body.code], clientId: 'client-oooo5555' });
+  assert.equal((await client.next()).reason, 'invalid');
+  client.ws.close();
+});
+
+test('a second join on a joined socket is rejected; a host cannot vote', { timeout: 5000 }, async () => {
+  const { body } = await createPoll();
+  const audience = await joinAudience(body.code, 'client-pppp6666');
+  audience.send({ type: 'join', code: body.code, clientId: 'client-pppp6666' });
+  assert.equal((await audience.until((m) => m.type === 'error')).reason, 'already_joined');
+
+  const host = await joinHost(body.code, body.hostToken);
+  host.send({ type: 'vote', slideId: 's0', value: 0 });
+  assert.equal((await host.until((m) => m.type === 'error')).reason, 'forbidden');
+  audience.ws.close();
+  host.ws.close();
+});
