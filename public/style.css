@@ -1,9 +1,11 @@
 :root {
+  color-scheme: light dark;
   --bg: #f6f5fb;
   --card: #ffffff;
   --text: #1c1b29;
   --muted: #6b6a80;
   --accent: #5b4bff;
+  --accent-strong: #5b4bff; /* fills that carry white text */
   --accent-soft: #e9e6ff;
   --danger: #c62828;
   --radius: 14px;
@@ -16,6 +18,7 @@
     --text: #f1f0fa;
     --muted: #9c9bb5;
     --accent: #8b7fff;
+    --accent-strong: #6a5cff;
     --accent-soft: #2e2b52;
     --danger: #ff8a80;
   }
@@ -64,7 +67,7 @@ button {
   font: inherit;
   font-weight: 600;
   color: #fff;
-  background: var(--accent);
+  background: var(--accent-strong);
   border: 0;
   border-radius: 10px;
   cursor: pointer;
@@ -97,15 +100,15 @@ button.link { padding: 4px 0; color: var(--accent); background: none; font-weigh
 .bar-track { height: 18px; background: var(--accent-soft); border-radius: 9px; overflow: hidden; }
 .bar-fill { height: 100%; width: 0; background: var(--accent); border-radius: 9px; transition: width 0.4s ease; }
 
-.results.cloud { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: center; min-height: 200px; }
-.cloud-word { font-weight: 700; color: var(--accent); line-height: 1.1; }
+.results.cloud { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: center; min-height: 200px; min-width: 0; overflow-wrap: anywhere; }
+.cloud-word { min-width: 0; overflow-wrap: anywhere; font-weight: 700; color: var(--accent); line-height: 1.1; }
 .empty { color: var(--muted); }
 
 /* audience */
 .audience-page .page { padding-top: 32px; }
 .audience-page h1 { margin: 0 0 20px; font-size: 1.5rem; }
 .choice { display: block; width: 100%; margin-bottom: 10px; padding: 16px; text-align: left; color: var(--text); background: var(--card); border: 2px solid var(--accent-soft); }
-.choice.selected { color: #fff; background: var(--accent); border-color: var(--accent); }
+.choice.selected { color: #fff; background: var(--accent-strong); border-color: var(--accent-strong); }
 .note { min-height: 1.4em; margin-top: 12px; color: var(--muted); }
 .mine { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
 .mine li { padding: 6px 12px; background: var(--accent-soft); border-radius: 999px; font-weight: 600; }
