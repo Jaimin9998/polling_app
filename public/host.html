@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Polls · Presenting</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="host-layout">
+    <aside class="join-panel">
+      <p class="label">Join at</p>
+      <p id="join-url" class="join-url"></p>
+      <p class="label">with code</p>
+      <p id="code" class="code"></p>
+      <img id="qr" alt="QR code to join the poll" width="180" height="180">
+      <p id="audience" class="audience"></p>
+    </aside>
+
+    <section class="stage">
+      <p id="progress" class="label"></p>
+      <h1 id="prompt"></h1>
+      <div id="results" class="results" aria-live="polite"></div>
+      <div class="controls">
+        <button id="prev" type="button" class="secondary">← Previous</button>
+        <button id="lock" type="button" class="secondary">Lock voting</button>
+        <button id="next" type="button">Next →</button>
+      </div>
+    </section>
+  </main>
+
+  <p id="status" class="status" hidden></p>
+  <div id="fatal" class="fatal" hidden>
+    <p id="fatal-msg"></p>
+    <a href="/">Back to home</a>
+  </div>
+  <script type="module" src="/host.js"></script>
+</body>
+</html>
